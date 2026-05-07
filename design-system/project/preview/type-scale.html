@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../fonts/fonts.css">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html, body { margin: 0; padding: 0; background: var(--bg); }
+  body { padding: 18px 24px; color: var(--fg); }
+  .label { font-family: var(--font-sans); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-3); margin-bottom: 10px; }
+  .row { display: grid; grid-template-columns: 80px 1fr; gap: 8px 20px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .row:last-child { border-bottom: 0; }
+  .tok { font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
+  .h1 { font-family: var(--font-display); font-size: 64px; line-height: 1; }
+  .h2 { font-family: var(--font-display); font-size: 44px; line-height: 1.1; }
+  .h3 { font-family: var(--font-display); font-size: 32px; line-height: 1.2; }
+  .body { font-family: var(--font-serif); font-size: 18px; line-height: 1.6; }
+  .ui { font-family: var(--font-sans); font-size: 14px; }
+  .cap { font-family: var(--font-sans); font-size: 12px; color: var(--fg-3); }
+</style>
+<body>
+  <div class="label">TYPE SCALE</div>
+  <div class="row"><div class="tok">h1 · 64</div><div class="h1">经史舆图</div></div>
+  <div class="row"><div class="tok">h2 · 44</div><div class="h2">城濮之战</div></div>
+  <div class="row"><div class="tok">h3 · 32</div><div class="h3">僖公二十八年</div></div>
+  <div class="row"><div class="tok">body · 18</div><div class="body">晋侯、宋公、齐国归父次于城濮。</div></div>
+  <div class="row"><div class="tok">ui · 14</div><div class="ui">原文 · 译文 · 对照</div></div>
+  <div class="row"><div class="tok">caption · 12</div><div class="cap">古地名：城濮 · 今山东鄄城西南</div></div>
+</body>

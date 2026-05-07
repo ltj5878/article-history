@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../fonts/fonts.css">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html, body { margin: 0; padding: 0; background: var(--bg); }
+  body { padding: 20px 24px; font-family: var(--font-sans); color: var(--fg); }
+  .label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-3); margin-bottom: 10px; }
+  .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .pane { padding: 14px 16px; border-radius: var(--r-3); border: 1px solid; min-height: 110px; }
+  .pane h4 { font-family: var(--font-display); font-size: 22px; margin: 0 0 4px 0; }
+  .pane .meta { font-size: 11px; opacity: 0.7; font-family: var(--font-mono); margin-bottom: 8px; }
+  .pane p { font-family: var(--font-serif); font-size: 13px; line-height: 1.7; margin: 0; }
+  .classic { background: #F5F0E8; color: #1F1A14; border-color: rgba(31,26,20,0.14); }
+  .dark { background: #15110B; color: #EDE3CE; border-color: rgba(237,227,206,0.12); }
+  .bright { background: #FFFFFF; color: #14110D; border-color: rgba(20,17,13,0.10); }
+</style>
+<body>
+  <div class="label">THEMES · 古风 · 暗色 · 明亮</div>
+  <div class="row">
+    <div class="pane classic">
+      <h4>古风 Classic</h4>
+      <div class="meta">paper · ink · vermillion</div>
+      <p>晋侯、宋公、齐国归父、崔夭、秦小子憖次于城濮。</p>
+    </div>
+    <div class="pane dark">
+      <h4>暗色 Dark</h4>
+      <div class="meta">night · contrast · ember</div>
+      <p>晋侯、宋公、齐国归父、崔夭、秦小子憖次于城濮。</p>
+    </div>
+    <div class="pane bright">
+      <h4>明亮 Bright</h4>
+      <div class="meta">white · clean · print</div>
+      <p>晋侯、宋公、齐国归父、崔夭、秦小子憖次于城濮。</p>
+    </div>
+  </div>
+</body>

@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../fonts/fonts.css">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html, body { margin: 0; padding: 0; background: var(--bg); }
+  body { padding: 18px 24px; color: var(--fg); font-family: var(--font-sans); }
+  .label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-3); margin-bottom: 12px; }
+  .row { display: grid; grid-template-columns: repeat(11, auto); gap: 8px; align-items: end; }
+  .item { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .box { background: var(--c-ink); border-radius: 1px; }
+  .nm { font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); }
+</style>
+<body>
+  <div class="label">SPACING SCALE · 4 px grid</div>
+  <div class="row">
+    <div class="item"><div class="box" style="width:4px;height:4px"></div><div class="nm">1·4</div></div>
+    <div class="item"><div class="box" style="width:8px;height:8px"></div><div class="nm">2·8</div></div>
+    <div class="item"><div class="box" style="width:12px;height:12px"></div><div class="nm">3·12</div></div>
+    <div class="item"><div class="box" style="width:16px;height:16px"></div><div class="nm">4·16</div></div>
+    <div class="item"><div class="box" style="width:20px;height:20px"></div><div class="nm">5·20</div></div>
+    <div class="item"><div class="box" style="width:24px;height:24px"></div><div class="nm">6·24</div></div>
+    <div class="item"><div class="box" style="width:32px;height:32px"></div><div class="nm">7·32</div></div>
+    <div class="item"><div class="box" style="width:40px;height:40px"></div><div class="nm">8·40</div></div>
+    <div class="item"><div class="box" style="width:56px;height:56px"></div><div class="nm">9·56</div></div>
+    <div class="item"><div class="box" style="width:72px;height:72px"></div><div class="nm">10·72</div></div>
+    <div class="item"><div class="box" style="width:96px;height:96px"></div><div class="nm">11·96</div></div>
+  </div>
+</body>

@@ -1,0 +1,258 @@
+/* ============================================================
+   经史舆图 — Design Tokens
+   Classical Chinese aesthetic: 宣纸 (rice paper) base, ink lines,
+   vermillion seals, indigo and ochre accents.
+   ============================================================ */
+
+/* ---------- Fonts ---------- */
+/* Loaded from Google Fonts in HTML <link>; fall back gracefully. */
+
+:root {
+  /* === Type families === */
+  --font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif;       /* 宋体 — body 古文 */
+  --font-sans:  "Noto Sans SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; /* 黑体 — UI chrome */
+  --font-display: "Ma Shan Zheng", "Noto Serif SC", serif;     /* 行楷 — display titles */
+  --font-seal: "ZCOOL XiaoWei", "Noto Serif SC", serif;        /* 篆书近似 — section markers */
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* === Type scale (古风 default — generous for vertical reading) === */
+  --fs-xs:   12px;
+  --fs-sm:   14px;
+  --fs-base: 16px;
+  --fs-md:   18px;   /* default body for 古文 reading */
+  --fs-lg:   20px;
+  --fs-xl:   24px;
+  --fs-2xl:  32px;
+  --fs-3xl:  44px;   /* chapter titles */
+  --fs-4xl:  64px;   /* hero / 书名 */
+
+  --lh-tight:   1.2;
+  --lh-snug:    1.4;
+  --lh-normal:  1.6;
+  --lh-relaxed: 1.9;   /* 古文 reading */
+  --lh-loose:   2.2;   /* 竖排 vertical reading */
+
+  --tracking-wide: 0.08em;   /* used for seal text and CAPS labels */
+
+  /* === Core palette — drawn from 中国传统色 === */
+  --c-paper:        #F5F0E8;   /* 宣纸 — rice paper */
+  --c-paper-2:      #EDE5D3;   /* 茶色, slightly aged */
+  --c-paper-3:      #E4D9BF;   /* deeper, used for map land */
+  --c-ink:          #1F1A14;   /* 墨色 — ink */
+  --c-ink-2:        #3B3328;   /* secondary ink */
+  --c-ink-3:        #6B5F4E;   /* tertiary, for translation */
+  --c-ink-4:        #A39580;   /* muted, captions */
+
+  --c-vermillion:   #C41E24;   /* 朱砂 — seals, key accents */
+  --c-vermillion-2: #9C1A1F;   /* darker seal */
+  --c-cinnabar:     #E8553A;   /* 朱红 — battlefield markers */
+
+  --c-indigo:       #2B4490;   /* 藏蓝 — Jin / cool faction */
+  --c-indigo-2:     #1B2E66;
+  --c-azurite:      #4A6FB0;   /* lighter indigo — rivers, links */
+
+  --c-ochre:        #8B572A;   /* 赭石 — earth, mountains */
+  --c-ochre-2:      #6B3F1D;
+  --c-amber:        #C8893A;   /* warmer ochre — capitals */
+
+  --c-celadon:      #6B8E5A;   /* 青绿 — events, mountains-pass */
+  --c-celadon-2:    #4F6E42;
+  --c-jade:         #7BA098;   /* 青瓷 — neutral terrain */
+
+  --c-water:        #8AA8C9;   /* 水色 — rivers */
+  --c-water-2:      #B8CDE0;   /* shallow water */
+
+  /* Faction colors (territories + routes) */
+  --f-jin:    #2B4490;   /* 晋 */
+  --f-chu:    #C41E24;   /* 楚 */
+  --f-qin:    #6B3F1D;   /* 秦 */
+  --f-qi:     #C8893A;   /* 齐 */
+  --f-song:   #6B8E5A;   /* 宋 */
+  --f-han:    #8B572A;   /* 韩 */
+  --f-wei:    #4A6FB0;   /* 魏 */
+  --f-zhao:   #7BA098;   /* 赵 */
+  --f-yan:    #3B3328;   /* 燕 */
+
+  /* Entity tag colors (left pane) */
+  --e-place:  var(--c-indigo);    /* 地名 — blue underline */
+  --e-person: var(--c-amber);     /* 人物 — orange underline */
+  --e-event:  var(--c-celadon);   /* 事件 — green underline */
+  --e-place-bg:  rgba(43, 68, 144, 0.08);
+  --e-person-bg: rgba(200, 137, 58, 0.10);
+  --e-event-bg:  rgba(107, 142, 90, 0.10);
+
+  /* POI marker colors (right pane / map) */
+  --poi-capital:    var(--c-vermillion);   /* 国都 红 */
+  --poi-battle:     var(--c-cinnabar);     /* 战场 橙 */
+  --poi-pass:       var(--c-celadon);      /* 关隘山川 绿 */
+  --poi-city:       var(--c-indigo);       /* 城邑 蓝 */
+
+  /* === Semantic — light/古风 (default) === */
+  --bg:        var(--c-paper);
+  --bg-2:      var(--c-paper-2);
+  --bg-3:      var(--c-paper-3);
+  --surface:   #FBF7EE;          /* slight lift over paper */
+  --surface-2: #F0E9D8;
+  --fg:        var(--c-ink);
+  --fg-2:      var(--c-ink-2);
+  --fg-3:      var(--c-ink-3);
+  --fg-4:      var(--c-ink-4);
+  --accent:        var(--c-vermillion);
+  --accent-strong: var(--c-vermillion-2);
+  --link:          var(--c-indigo);
+  --border:    rgba(31, 26, 20, 0.14);
+  --border-2:  rgba(31, 26, 20, 0.28);
+  --rule:      rgba(31, 26, 20, 0.55);   /* hairline ink rules */
+  --highlight: rgba(196, 30, 36, 0.10);  /* current-paragraph wash */
+
+  /* === Spacing — based on a 4px grid, then scroll-friendly steps === */
+  --sp-0:   0;
+  --sp-1:   4px;
+  --sp-2:   8px;
+  --sp-3:   12px;
+  --sp-4:   16px;
+  --sp-5:   20px;
+  --sp-6:   24px;
+  --sp-7:   32px;
+  --sp-8:   40px;
+  --sp-9:   56px;
+  --sp-10:  72px;
+  --sp-11:  96px;
+
+  /* === Radii — subtle. Chinese design favors crisp corners. === */
+  --r-0: 0;
+  --r-1: 2px;
+  --r-2: 4px;
+  --r-3: 8px;
+  --r-4: 12px;
+  --r-pill: 999px;
+  --r-seal: 6px;        /* square seal corner */
+
+  /* === Borders === */
+  --bw-hair:   1px;
+  --bw-rule:   1.5px;
+  --bw-frame:  2px;
+  --bw-thick:  3px;     /* used for 卷轴 frames */
+
+  /* === Shadows — restrained; ink does not glow === */
+  --sh-1: 0 1px 0 rgba(31, 26, 20, 0.04), 0 1px 2px rgba(31, 26, 20, 0.06);
+  --sh-2: 0 2px 4px rgba(31, 26, 20, 0.06), 0 4px 12px rgba(31, 26, 20, 0.08);
+  --sh-3: 0 6px 16px rgba(31, 26, 20, 0.10), 0 12px 32px rgba(31, 26, 20, 0.10);
+  --sh-seal: 0 1px 0 rgba(196, 30, 36, 0.25);    /* 印章 imprint */
+  --sh-inset-paper: inset 0 0 24px rgba(139, 87, 42, 0.06);  /* aged-paper feel */
+
+  /* === Motion === */
+  --ease-ink:    cubic-bezier(0.22, 0.61, 0.36, 1);    /* brush settle */
+  --ease-scroll: cubic-bezier(0.4, 0.0, 0.2, 1);
+  --dur-1: 120ms;
+  --dur-2: 240ms;
+  --dur-3: 480ms;
+  --dur-4: 800ms;     /* path-draw on routes */
+
+  /* === Layout === */
+  --reader-w-min: 360px;
+  --reader-w-default: 40%;
+  --topbar-h: 56px;
+  --timeline-h: 72px;
+}
+
+/* === 暗色 / Dark === */
+[data-theme="dark"] {
+  --bg:        #15110B;
+  --bg-2:      #1E1A12;
+  --bg-3:      #2A2418;
+  --surface:   #1A150E;
+  --surface-2: #241E15;
+  --fg:        #EDE3CE;
+  --fg-2:      #C9BC9F;
+  --fg-3:      #9E9277;
+  --fg-4:      #6E6450;
+  --accent:        #E8553A;
+  --accent-strong: #C41E24;
+  --link:          #8AA8C9;
+  --border:    rgba(237, 227, 206, 0.12);
+  --border-2:  rgba(237, 227, 206, 0.24);
+  --rule:      rgba(237, 227, 206, 0.45);
+  --highlight: rgba(232, 85, 58, 0.14);
+
+  --e-place-bg:  rgba(138, 168, 201, 0.14);
+  --e-person-bg: rgba(232, 137, 58, 0.16);
+  --e-event-bg:  rgba(123, 160, 152, 0.16);
+
+  --sh-1: 0 1px 0 rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --sh-2: 0 2px 4px rgba(0, 0, 0, 0.45), 0 4px 12px rgba(0, 0, 0, 0.5);
+  --sh-3: 0 6px 16px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+/* === 明亮 / Bright === */
+[data-theme="bright"] {
+  --bg:        #FFFFFF;
+  --bg-2:      #F7F7F5;
+  --bg-3:      #EDEDE9;
+  --surface:   #FFFFFF;
+  --surface-2: #F4F4F1;
+  --fg:        #14110D;
+  --fg-2:      #36312A;
+  --fg-3:      #6A6358;
+  --fg-4:      #9A9285;
+  --accent:        #C41E24;
+  --accent-strong: #9C1A1F;
+  --link:          #2B4490;
+  --border:    rgba(20, 17, 13, 0.10);
+  --border-2:  rgba(20, 17, 13, 0.22);
+  --rule:      rgba(20, 17, 13, 0.55);
+  --highlight: rgba(196, 30, 36, 0.07);
+}
+
+/* ============================================================
+   Semantic element rules — drop-in defaults so prototypes
+   inherit the brand without per-component styling.
+   ============================================================ */
+
+html, body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-serif);
+  font-size: var(--fs-md);
+  line-height: var(--lh-relaxed);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 400; line-height: var(--lh-tight); color: var(--fg); margin: 0; }
+h1 { font-size: var(--fs-4xl); letter-spacing: var(--tracking-wide); }
+h2 { font-size: var(--fs-3xl); }
+h3 { font-size: var(--fs-2xl); }
+h4 { font-size: var(--fs-xl); }
+
+p { margin: 0 0 var(--sp-4) 0; color: var(--fg-2); text-wrap: pretty; }
+small, .caption { font-size: var(--fs-sm); color: var(--fg-3); }
+
+a { color: var(--link); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { color: var(--accent); }
+
+code, pre, kbd { font-family: var(--font-mono); font-size: 0.9em; }
+
+hr {
+  border: 0;
+  height: 1px;
+  background: var(--rule);
+  margin: var(--sp-7) 0;
+}
+
+/* Vertical reading mode (古风 竖排) */
+.vertical-rl {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  line-height: var(--lh-loose);
+  letter-spacing: 0.05em;
+}
+
+/* Entity tags inside body text */
+.ent { padding: 0 2px; border-bottom: 1.5px solid currentColor; cursor: pointer; transition: background var(--dur-1) var(--ease-ink); }
+.ent-place  { color: var(--e-place);  background: transparent; }
+.ent-person { color: var(--e-person); background: transparent; }
+.ent-event  { color: var(--e-event);  background: transparent; }
+.ent-place:hover  { background: var(--e-place-bg); }
+.ent-person:hover { background: var(--e-person-bg); }
+.ent-event:hover  { background: var(--e-event-bg); }

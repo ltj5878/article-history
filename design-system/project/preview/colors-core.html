@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../fonts/fonts.css">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  html, body { margin: 0; padding: 0; background: var(--bg); }
+  body { padding: 20px 24px; font-family: var(--font-sans); color: var(--fg); }
+  .row { display: flex; gap: 12px; align-items: stretch; }
+  .col { display: flex; flex-direction: column; gap: 10px; }
+  .swatch { border-radius: var(--r-2); border: 1px solid var(--border); padding: 12px 14px; min-height: 64px; display: flex; flex-direction: column; justify-content: space-between; }
+  .swatch .name { font-size: 12px; font-weight: 500; opacity: 0.85; }
+  .swatch .hex { font-family: var(--font-mono); font-size: 11px; opacity: 0.75; }
+  .label { font-family: var(--font-sans); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-3); margin-bottom: 8px; }
+  .grid { display: grid; gap: 10px; }
+</style>
+<body>
+  <div class="label">CORE PALETTE · 中国传统色</div>
+  <div class="grid" style="grid-template-columns: repeat(5, 1fr);">
+    <div class="swatch" style="background:#F5F0E8; color:#1F1A14;">
+      <div class="name">宣纸 Paper</div>
+      <div class="hex">#F5F0E8</div>
+    </div>
+    <div class="swatch" style="background:#1F1A14; color:#F5F0E8;">
+      <div class="name">墨色 Ink</div>
+      <div class="hex">#1F1A14</div>
+    </div>
+    <div class="swatch" style="background:#C41E24; color:#F5F0E8;">
+      <div class="name">朱砂 Vermillion</div>
+      <div class="hex">#C41E24</div>
+    </div>
+    <div class="swatch" style="background:#2B4490; color:#F5F0E8;">
+      <div class="name">藏蓝 Indigo</div>
+      <div class="hex">#2B4490</div>
+    </div>
+    <div class="swatch" style="background:#8B572A; color:#F5F0E8;">
+      <div class="name">赭石 Ochre</div>
+      <div class="hex">#8B572A</div>
+    </div>
+  </div>
+</body>

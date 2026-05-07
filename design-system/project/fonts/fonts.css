@@ -1,0 +1,19 @@
+/* Web fonts for 经史舆图.
+   Sourced from Google Fonts CDN. If the user wants to ship offline,
+   download woff2 files into this folder and replace the @font-face blocks
+   below with local src() references. */
+
+/* Noto Serif SC — primary body (Songti) */
+@import url("https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;500;600;700;900&display=swap");
+
+/* Noto Sans SC — UI chrome */
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap");
+
+/* Ma Shan Zheng — display 行楷 (chapter titles, big numerals) */
+@import url("https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&display=swap");
+
+/* ZCOOL XiaoWei — softened 篆书-feel for section labels and seals */
+@import url("https://fonts.googleapis.com/css2?family=ZCOOL+XiaoWei&display=swap");
+
+/* JetBrains Mono — code & coordinates */
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap");

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 24" preserveAspectRatio="none" role="img" aria-label="云纹 cloud band">
+  <g fill="none" stroke="#1F1A14" stroke-width="1.2" stroke-linecap="round" opacity="0.7">
+    
+    <path d="M0,18 C8,18 8,8 16,8 C24,8 24,18 32,18 C40,18 40,12 48,12 C56,12 56,6 64,6 C72,6 72,18 80,18 C88,18 88,8 96,8 C104,8 104,18 112,18"></path>
+    <path d="M112,18 C120,18 120,8 128,8 C136,8 136,18 144,18 C152,18 152,12 160,12 C168,12 168,6 176,6 C184,6 184,18 192,18 C200,18 200,8 208,8 C216,8 216,18 224,18"></path>
+    <path d="M224,18 C232,18 232,8 240,8 C248,8 248,18 256,18 C264,18 264,12 272,12 C280,12 280,6 288,6 C296,6 296,18 304,18 C312,18 312,8 320,8 C328,8 328,18 336,18"></path>
+    <path d="M336,18 C344,18 344,8 352,8 C360,8 360,18 368,18 C376,18 376,12 384,12 C392,12 392,6 400,6 C408,6 408,18 416,18 C424,18 424,8 432,8 C440,8 440,18 448,18 C456,18 456,8 464,8 C472,8 472,18 480,18"></path>
+    
+    <g>
+      <circle cx="16" cy="8" r="2.4"></circle>
+      <circle cx="64" cy="6" r="2.4"></circle>
+      <circle cx="128" cy="8" r="2.4"></circle>
+      <circle cx="176" cy="6" r="2.4"></circle>
+      <circle cx="240" cy="8" r="2.4"></circle>
+      <circle cx="288" cy="6" r="2.4"></circle>
+      <circle cx="352" cy="8" r="2.4"></circle>
+      <circle cx="400" cy="6" r="2.4"></circle>
+      <circle cx="464" cy="8" r="2.4"></circle>
+    </g>
+  </g>
+</svg>

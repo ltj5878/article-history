@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 60" preserveAspectRatio="none" role="img" aria-label="海水江崖纹 wave-mountain">
+  <g fill="none" stroke="#2B4490" stroke-width="1.1" opacity="0.55" stroke-linecap="round">
+    
+    <path d="M0,52 L40,18 L80,52 L120,22 L160,52 L200,16 L240,52 L280,22 L320,52 L360,18 L400,52 L440,22 L480,52" fill="#E4D9BF" stroke="#1F1A14" opacity="0.9"></path>
+    
+    <g stroke="#2B4490" opacity="0.7">
+      <path d="M0,55 Q12,49 24,55 T48,55 T72,55 T96,55 T120,55 T144,55 T168,55 T192,55 T216,55 T240,55 T264,55 T288,55 T312,55 T336,55 T360,55 T384,55 T408,55 T432,55 T456,55 T480,55"></path>
+      <path d="M0,58 Q12,53 24,58 T48,58 T72,58 T96,58 T120,58 T144,58 T168,58 T192,58 T216,58 T240,58 T264,58 T288,58 T312,58 T336,58 T360,58 T384,58 T408,58 T432,58 T456,58 T480,58"></path>
+    </g>
+  </g>
+</svg>

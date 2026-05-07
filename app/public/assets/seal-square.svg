@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" role="img" aria-label="经史舆图 印章">
+  <rect x="2" y="2" width="76" height="76" rx="6" fill="#C41E24"></rect>
+  <rect x="6" y="6" width="68" height="68" rx="4" fill="none" stroke="#F5F0E8" stroke-width="1.5" opacity="0.9"></rect>
+  <g fill="#F5F0E8" font-family="ZCOOL XiaoWei, Noto Serif SC, serif" font-size="24" text-anchor="middle">
+    <text x="24" y="34">经</text>
+    <text x="56" y="34">史</text>
+    <text x="24" y="64">舆</text>
+    <text x="56" y="64">图</text>
+  </g>
+</svg>

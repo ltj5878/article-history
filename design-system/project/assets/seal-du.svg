@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60" role="img" aria-label="读 印章">
+  <rect x="2" y="2" width="56" height="56" rx="4" fill="#C41E24"></rect>
+  <rect x="5" y="5" width="50" height="50" rx="3" fill="none" stroke="#F5F0E8" stroke-width="1.2" opacity="0.9"></rect>
+  <text x="30" y="40" fill="#F5F0E8" font-family="Ma Shan Zheng, Noto Serif SC, serif" font-size="34" text-anchor="middle">读</text>
+</svg>
