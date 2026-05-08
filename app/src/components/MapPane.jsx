@@ -532,6 +532,23 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
     }
   }, [chapter?.id, mapReady]);
 
+  // Active paragraph remains the primary map focus. This matters for article
+  // mode where one reading unit can contain many historical scenes.
+  useEffect(() => {
+    const map = mapInstance.current;
+    if (!map || !mapReady || !paragraph) return;
+    const bounds = new maplibregl.LngLatBounds();
+    for (const e of (paragraph.entities || [])) {
+      if (e.type === 'place' && e.lat && e.lng) bounds.extend([e.lng, e.lat]);
+    }
+    for (const r of (paragraph.routes || [])) {
+      for (const pt of r.points) bounds.extend([pt.lng, pt.lat]);
+    }
+    if (!bounds.isEmpty()) {
+      map.fitBounds(bounds, { padding: 90, duration: 650, maxZoom: 7 });
+    }
+  }, [paragraph?.id, mapReady]);
+
   const handleZoomIn = useCallback(() => mapInstance.current?.zoomIn(), []);
   const handleZoomOut = useCallback(() => mapInstance.current?.zoomOut(), []);
   const handleRecenter = useCallback(() => {

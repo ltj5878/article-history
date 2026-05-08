@@ -18,14 +18,18 @@ function loadPrefs() {
 }
 
 const savedPrefs = loadPrefs();
+const legacyShijiBookIds = new Set(['xiangyu', 'gaozu', 'qinshihuang', 'liezhuan']);
+const savedBookId = legacyShijiBookIds.has(savedPrefs.bookId) ? 'shiji' : savedPrefs.bookId;
 
 const initialState = {
-  bookId: savedPrefs.bookId || 'xiangyu',
-  bookTitle: '项羽本纪',
+  bookId: savedBookId || 'shiji',
+  bookTitle: '史记',
   dynasty: '西汉',
   chapterId: null,
   activeParagraph: null,
+  pendingSection: null,
   textMode: 'both',
+  timelineCollapsed: savedPrefs.timelineCollapsed || false,
   vertical: false,
   theme: savedPrefs.theme || 'classic',
   layers: { places: true, routes: true, territories: true, provinces: true },
@@ -43,9 +47,9 @@ function reducer(state, action) {
       return { ...state, layers: { ...state.layers, [action.layer]: !state.layers[action.layer] } };
     case 'selectBook':
       // Switch to a different book; clear current chapter so the load effect picks the first one
-      return { ...state, bookId: action.id, chapterId: null, activeParagraph: null, selectedPlace: null };
+      return { ...state, bookId: action.id, chapterId: null, activeParagraph: null, pendingSection: null, selectedPlace: null };
     case 'selectChapter':
-      return { ...state, chapterId: action.id, activeParagraph: null, selectedPlace: null };
+      return { ...state, chapterId: action.id, activeParagraph: null, pendingSection: null, selectedPlace: null };
     case 'selectPlace':
     case 'focusEntity':
       return { ...state, selectedPlace: action.entity };
@@ -54,7 +58,26 @@ function reducer(state, action) {
       return { ...state, theme: order[(order.indexOf(state.theme) + 1) % order.length] };
     }
     case 'pickEra':
-      return { ...state, chapterId: action.event.chapter, activeParagraph: null, selectedPlace: null };
+      if (action.event.targets?.length) {
+        const target = action.event.targets.find(t => t.article === state.chapterId) || action.event.targets[0];
+        return {
+          ...state,
+          chapterId: target.article,
+          pendingSection: target.section || null,
+          activeParagraph: null,
+          selectedPlace: null,
+        };
+      }
+      if (action.event.article) {
+        return {
+          ...state,
+          chapterId: action.event.article,
+          pendingSection: action.event.section || null,
+          activeParagraph: null,
+          selectedPlace: null,
+        };
+      }
+      return { ...state, chapterId: action.event.chapter, pendingSection: null, activeParagraph: null, selectedPlace: null };
     case 'setSplit':
       return { ...state, splitRatio: Math.max(0.25, Math.min(0.65, action.value)) };
     default:
@@ -84,11 +107,12 @@ export default function App() {
         bookId: state.bookId,
         theme: state.theme,
         splitRatio: state.splitRatio,
+        timelineCollapsed: state.timelineCollapsed,
       }));
     } catch {
       // localStorage may be unavailable (private mode, quota); ignore
     }
-  }, [state.bookId, state.theme, state.splitRatio]);
+  }, [state.bookId, state.theme, state.splitRatio, state.timelineCollapsed]);
 
   // Load global book list once
   useEffect(() => {
@@ -112,36 +136,53 @@ export default function App() {
     return () => ctrl.abort();
   }, [state.bookId]);
 
-  // Whenever bookMeta loads or chapter is null, ensure a chapter is selected.
+  const readingItems = bookMeta?.articles || bookMeta?.chapters || [];
+  const isArticleBook = Boolean(bookMeta?.articles);
+
+  // Whenever bookMeta loads or chapter is null, ensure a reading item is selected.
   // Guard against stale bookMeta: only auto-select when bookMeta is for the
   // currently-active book (otherwise we'd pick a chapter from the previous book).
   useEffect(() => {
-    if (bookMeta && bookMeta.id === state.bookId && !state.chapterId && bookMeta.chapters[0]) {
-      dispatch({ type: 'selectChapter', id: bookMeta.chapters[0].id });
+    if (bookMeta && bookMeta.id === state.bookId && !state.chapterId && readingItems[0]) {
+      dispatch({ type: 'selectChapter', id: readingItems[0].id });
     }
-  }, [bookMeta, state.bookId, state.chapterId]);
+  }, [bookMeta, state.bookId, state.chapterId, readingItems]);
 
-  // Load chapter content when chapterId changes
+  // Load chapter/article content when chapterId changes
   useEffect(() => {
     if (!state.chapterId) return;
     const ctrl = new AbortController();
-    api.getChapter(state.bookId, state.chapterId, { signal: ctrl.signal })
+    const load = isArticleBook ? api.getArticle : api.getChapter;
+    load(state.bookId, state.chapterId, { signal: ctrl.signal })
       .then(c => {
         setChapter(c);
-        if (c.paragraphs?.[0]) {
-          dispatch({ type: 'set', key: 'activeParagraph', value: c.paragraphs[0].id });
-        }
-        if (c.period) {
-          api.getPeriod(c.period, { signal: ctrl.signal })
-            .then(setPeriod)
-            .catch(e => { if (e.name !== 'AbortError') setError(e.message); });
+        const firstParagraph = findSection(c, state.pendingSection)?.paragraphs?.[0] || getFirstParagraph(c);
+        if (firstParagraph) {
+          dispatch({ type: 'set', key: 'activeParagraph', value: firstParagraph.id });
         }
       })
       .catch(e => { if (e.name !== 'AbortError') setError(e.message); });
     return () => ctrl.abort();
-  }, [state.chapterId, state.bookId]);
+  }, [state.chapterId, state.bookId, isArticleBook, state.pendingSection]);
 
-  const paragraph = chapter?.paragraphs?.find(p => p.id === state.activeParagraph) || chapter?.paragraphs?.[0];
+  const paragraph = findParagraph(chapter, state.activeParagraph) || getFirstParagraph(chapter);
+  const activeSection = findSectionForParagraph(chapter, paragraph?.id);
+  const periodId = activeSection?.period || chapter?.period || null;
+  const currentYear = activeSection?.year || chapter?.year;
+  const currentTimelineItem = activeSection?.id || state.chapterId;
+  const mapChapter = chapter ? { ...chapter, paragraphs: getAllParagraphs(chapter) } : null;
+
+  useEffect(() => {
+    if (!periodId) {
+      setPeriod(null);
+      return;
+    }
+    const ctrl = new AbortController();
+    api.getPeriod(periodId, { signal: ctrl.signal })
+      .then(setPeriod)
+      .catch(e => { if (e.name !== 'AbortError') setError(e.message); });
+    return () => ctrl.abort();
+  }, [periodId]);
 
   // Split-pane drag
   const dragRef = useRef(null);
@@ -187,9 +228,10 @@ export default function App() {
   const books = allBooks.length
     ? allBooks.map(b => ({
         ...b,
-        chapters: b.id === bookMeta.id ? bookMeta.chapters : [],
+        chapters: b.id === bookMeta.id ? (bookMeta.chapters || bookMeta.articles || []) : [],
+        itemKind: b.id === bookMeta.id && bookMeta.articles ? 'article' : 'chapter',
       }))
-    : [{ id: bookMeta.id, title: bookMeta.title, dynasty: bookMeta.dynasty, chapters: bookMeta.chapters }];
+    : [{ id: bookMeta.id, title: bookMeta.title, dynasty: bookMeta.dynasty, chapters: readingItems, itemKind: isArticleBook ? 'article' : 'chapter' }];
 
   return (
     <ErrorBoundary>
@@ -204,18 +246,45 @@ export default function App() {
           <div className="splitpane__gutter" onMouseDown={onSplitDown} />
           <div className="splitpane__right">
             <ErrorBoundary>
-              <MapPane paragraph={paragraph} state={state} dispatch={dispatch} chapter={chapter} period={period} />
+              <MapPane paragraph={paragraph} state={state} dispatch={dispatch} chapter={mapChapter} period={period} />
             </ErrorBoundary>
           </div>
         </div>
         <Timeline
           events={bookMeta.eraEvents || []}
-          chapters={bookMeta.chapters || []}
-          currentChapter={state.chapterId}
-          currentYear={chapter?.year}
+          chapters={readingItems}
+          currentChapter={currentTimelineItem}
+          currentYear={currentYear}
+          collapsed={state.timelineCollapsed}
+          onToggleCollapsed={() => dispatch({ type: 'toggle', key: 'timelineCollapsed' })}
           onPick={(ev) => dispatch({ type: 'pickEra', event: ev })}
         />
       </div>
     </ErrorBoundary>
   );
+}
+
+function getAllParagraphs(doc) {
+  if (!doc) return [];
+  if (doc.paragraphs) return doc.paragraphs;
+  return (doc.sections || []).flatMap(section => section.paragraphs || []);
+}
+
+function getFirstParagraph(doc) {
+  return getAllParagraphs(doc)[0] || null;
+}
+
+function findParagraph(doc, paragraphId) {
+  if (!doc || !paragraphId) return null;
+  return getAllParagraphs(doc).find(p => p.id === paragraphId) || null;
+}
+
+function findSection(doc, sectionId) {
+  if (!doc?.sections || !sectionId) return null;
+  return doc.sections.find(section => section.id === sectionId) || null;
+}
+
+function findSectionForParagraph(doc, paragraphId) {
+  if (!doc?.sections || !paragraphId) return null;
+  return doc.sections.find(section => (section.paragraphs || []).some(p => p.id === paragraphId)) || null;
 }

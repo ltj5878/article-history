@@ -4,12 +4,10 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Books — each module exports { book, chapters, eraEvents }
+// Books — modules can export legacy { book, chapters, eraEvents } or
+// article-based { book, articles, eraEvents }.
 import * as zuozhuan from './data/books/zuozhuan.js';
-import * as xiangyu from './data/books/xiangyu-benji.js';
-import * as gaozu from './data/books/gaozu-benji.js';
-import * as qinshihuang from './data/books/qin-shihuang-benji.js';
-import * as liezhuan from './data/books/shiji-liezhuan.js';
+import * as shiji from './data/books/shiji.js';
 
 // Shared period definitions
 import { periods } from './data/periods.js';
@@ -22,10 +20,7 @@ app.use(express.json());
 // === Book registry — id → module ===
 const BOOK_MODULES = {
   zuozhuan,
-  xiangyu,
-  gaozu,
-  qinshihuang,
-  liezhuan,
+  shiji,
 };
 
 function getBookModule(id) {
@@ -44,7 +39,8 @@ app.get('/api/books', (req, res) => {
     dynasty: m.book.dynasty,
     author: m.book.author,
     description: m.book.description,
-    chapterCount: m.chapters.length,
+    chapterCount: m.chapters?.length || 0,
+    articleCount: m.articles?.length || 0,
   }));
   res.set('Cache-Control', JSON_CACHE);
   res.json(list);
@@ -56,7 +52,8 @@ app.get('/api/books/:id', (req, res) => {
   res.set('Cache-Control', JSON_CACHE);
   res.json({
     ...m.book,
-    chapters: m.chapters.map(c => ({ id: c.id, title: c.title, subtitle: c.subtitle, year: c.year })),
+    chapters: m.chapters?.map(summarizeChapter),
+    articles: m.articles?.map(summarizeArticle),
     eraEvents: m.eraEvents,
   });
 });
@@ -65,10 +62,20 @@ app.get('/api/books/:id', (req, res) => {
 app.get('/api/books/:bookId/chapters/:chapterId', (req, res) => {
   const m = getBookModule(req.params.bookId);
   if (!m) return res.status(404).json({ error: 'Book not found' });
-  const ch = m.chapters.find(c => c.id === req.params.chapterId);
+  const ch = m.chapters?.find(c => c.id === req.params.chapterId);
   if (!ch) return res.status(404).json({ error: 'Chapter not found' });
   res.set('Cache-Control', JSON_CACHE);
   res.json(ch);
+});
+
+// === Article content ===
+app.get('/api/books/:bookId/articles/:articleId', (req, res) => {
+  const m = getBookModule(req.params.bookId);
+  if (!m) return res.status(404).json({ error: 'Book not found' });
+  const article = m.articles?.find(a => a.id === req.params.articleId);
+  if (!article) return res.status(404).json({ error: 'Article not found' });
+  res.set('Cache-Control', JSON_CACHE);
+  res.json(article);
 });
 
 // === Map period data ===
@@ -98,11 +105,17 @@ app.get('/api/geo/:layer', (req, res) => {
 
 // === Health ===
 app.get('/api/health', (req, res) => {
-  const books = Object.values(BOOK_MODULES).map(m => ({ id: m.book.id, title: m.book.title, chapters: m.chapters.length }));
+  const books = Object.values(BOOK_MODULES).map(m => ({
+    id: m.book.id,
+    title: m.book.title,
+    chapters: m.chapters?.length || 0,
+    articles: m.articles?.length || 0,
+  }));
   res.json({
     status: 'ok',
     books,
     totalChapters: books.reduce((sum, b) => sum + b.chapters, 0),
+    totalArticles: books.reduce((sum, b) => sum + b.articles, 0),
     periods: Object.keys(periods),
   });
 });
@@ -119,8 +132,25 @@ process.on('unhandledRejection', err => console.error('[unhandledRejection]', er
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
-  const totalCh = Object.values(BOOK_MODULES).reduce((sum, m) => sum + m.chapters.length, 0);
+  const totalCh = Object.values(BOOK_MODULES).reduce((sum, m) => sum + (m.chapters?.length || 0), 0);
+  const totalArticles = Object.values(BOOK_MODULES).reduce((sum, m) => sum + (m.articles?.length || 0), 0);
   console.log(`经史舆图 API server listening on http://localhost:${PORT}`);
-  console.log(`  Books: ${Object.keys(BOOK_MODULES).join(', ')} (${totalCh} chapters total)`);
+  console.log(`  Books: ${Object.keys(BOOK_MODULES).join(', ')} (${totalCh} chapters / ${totalArticles} articles total)`);
   console.log(`  Periods: ${Object.keys(periods).length}`);
 });
+
+function summarizeChapter(c) {
+  return { id: c.id, title: c.title, subtitle: c.subtitle, year: c.year };
+}
+
+function summarizeArticle(article) {
+  const years = (article.sections || []).map(s => s.year).filter(y => typeof y === 'number');
+  return {
+    id: article.id,
+    title: article.title,
+    subtitle: article.subtitle,
+    year: years[0],
+    yearStart: years.length ? Math.min(...years) : article.yearStart,
+    yearEnd: years.length ? Math.max(...years) : article.yearEnd,
+  };
+}

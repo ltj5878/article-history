@@ -5,9 +5,10 @@ export default function ReaderPane({ chapter, state, dispatch }) {
   const [popover, setPopover] = useState(null);  // { entity, x, y } | null
 
   useEffect(() => {
+    if (state.activeParagraph === getFirstParagraphId(chapter)) return;
     const el = containerRef.current?.querySelector(`[data-pid="${state.activeParagraph}"]`);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [state.activeParagraph]);
+  }, [state.activeParagraph, chapter]);
 
   // Close popover when clicking outside or pressing Esc
   useEffect(() => {
@@ -65,13 +66,23 @@ export default function ReaderPane({ chapter, state, dispatch }) {
       <div className="reader__head">
         <div className="reader__crumb">《{state.bookTitle}》· {state.dynasty}</div>
         <h1 className="reader__title">{chapter.title}</h1>
-        <div className="reader__sub">{chapter.subtitle} · {formatYear(chapter.year)}</div>
+        <div className="reader__sub">{formatSubtitle(chapter)}</div>
         <img className="reader__rule" src="/assets/yun-rule.svg" alt="" />
       </div>
       <div ref={containerRef} className="reader__body">
-        {chapter.paragraphs.map((p, i) => (
-          <Paragraph key={p.id} idx={i} para={p} state={state} dispatch={dispatch} onEntityClick={onEntityClick} />
-        ))}
+        {chapter.sections
+          ? chapter.sections.map(section => (
+              <ArticleSection
+                key={section.id}
+                section={section}
+                state={state}
+                dispatch={dispatch}
+                onEntityClick={onEntityClick}
+              />
+            ))
+          : chapter.paragraphs.map((p, i) => (
+              <Paragraph key={p.id} idx={i} para={p} state={state} dispatch={dispatch} onEntityClick={onEntityClick} />
+            ))}
         <div className="reader__endseal">
           <img src="/assets/seal-du.svg" alt="读" />
         </div>
@@ -88,8 +99,47 @@ export default function ReaderPane({ chapter, state, dispatch }) {
   );
 }
 
+function formatSubtitle(chapter) {
+  const parts = [chapter.subtitle];
+  if (typeof chapter.year === 'number') parts.push(formatYear(chapter.year));
+  return parts.filter(Boolean).join(' · ');
+}
+
+function getFirstParagraphId(chapter) {
+  if (!chapter) return null;
+  if (chapter.paragraphs?.[0]) return chapter.paragraphs[0].id;
+  return chapter.sections?.find(section => section.paragraphs?.[0])?.paragraphs?.[0]?.id || null;
+}
+
 function formatYear(y) {
   return y < 0 ? `公元前 ${-y} 年` : `公元 ${y} 年`;
+}
+
+function ArticleSection({ section, state, dispatch, onEntityClick }) {
+  const firstParagraph = section.paragraphs?.[0];
+  const isActive = Boolean(firstParagraph && section.paragraphs?.some(p => p.id === state.activeParagraph));
+
+  return (
+    <section className="reader-section">
+      <button
+        type="button"
+        className={"reader-section__head" + (isActive ? " is-active" : "")}
+        onClick={() => {
+          if (firstParagraph) dispatch({ type: "set", key: "activeParagraph", value: firstParagraph.id });
+        }}
+      >
+        <span className="reader-section__title">{section.title}</span>
+        <span className="reader-section__sub">
+          {[section.subtitle, typeof section.year === 'number' ? formatYear(section.year) : null].filter(Boolean).join(' · ')}
+        </span>
+      </button>
+      <div className="reader-section__body">
+        {(section.paragraphs || []).map((p, i) => (
+          <Paragraph key={p.id} idx={i} para={p} state={state} dispatch={dispatch} onEntityClick={onEntityClick} />
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function Paragraph({ idx, para, state, dispatch, onEntityClick }) {
@@ -106,7 +156,7 @@ function Paragraph({ idx, para, state, dispatch, onEntityClick }) {
           <ParagraphOriginal text={para.original} entities={para.entities} onEntityClick={onEntityClick} />
         </p>
       )}
-      {showTranslation && (
+      {showTranslation && para.translation && (
         <p className="para__translation">{para.translation}</p>
       )}
     </div>

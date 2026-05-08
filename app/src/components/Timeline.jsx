@@ -13,7 +13,7 @@ import { useMemo, useRef, useState, useEffect, useCallback, useLayoutEffect } fr
  *   - Click on an event button → jump to that chapter
  *   - Mouse wheel → also pans (horizontal/shift+vertical)
  */
-export default function Timeline({ events, currentYear, currentChapter, chapters = [], onPick }) {
+export default function Timeline({ events, currentYear, currentChapter, collapsed, onToggleCollapsed, onPick }) {
   const viewportRef = useRef(null);
   const trackRef = useRef(null);
   const [pan, setPan] = useState(0);     // pixels translated; 0 = aligned to viewport left
@@ -99,6 +99,7 @@ export default function Timeline({ events, currentYear, currentChapter, chapters
 
   // === Drag handlers ===
   const onPointerDown = (e) => {
+    if (collapsed) return;
     if (e.button !== 0 && e.button !== undefined) return;
     // Don't start drag if user pressed inside an event button
     if (e.target.closest('.timeline__event')) return;
@@ -129,11 +130,12 @@ export default function Timeline({ events, currentYear, currentChapter, chapters
 
   // Wheel scrolling — horizontal scroll OR shift+vertical
   const onWheel = useCallback((e) => {
+    if (collapsed) return;
     const dx = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : (e.shiftKey ? e.deltaY : 0);
     if (!dx) return;
     e.preventDefault();
     setPan(p => clampPan(p - dx));
-  }, [clampPan]);
+  }, [clampPan, collapsed]);
 
   // Stagger overlapping events into vertical lanes
   const laneAssignments = useMemo(() => {
@@ -169,12 +171,27 @@ export default function Timeline({ events, currentYear, currentChapter, chapters
 
   return (
     <div
-      className={'timeline' + (dragging ? ' is-dragging' : '')}
+      className={'timeline' + (dragging ? ' is-dragging' : '') + (collapsed ? ' is-collapsed' : '')}
       style={{ '--lanes': totalLanes }}
       ref={viewportRef}
       onMouseDown={onPointerDown}
       onWheel={onWheel}
     >
+      <button
+        type="button"
+        className="timeline__toggle"
+        title={collapsed ? '展开时间轴' : '收起时间轴'}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleCollapsed();
+        }}
+      >
+        <span>{collapsed ? '展开时间轴' : '收起时间轴'}</span>
+        <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
+          <path d={collapsed ? 'M2 7l3.5-3L9 7' : 'M2 4l3.5 3L9 4'} stroke="currentColor" fill="none" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
       <div
         className="timeline__track"
         ref={trackRef}
@@ -195,7 +212,7 @@ export default function Timeline({ events, currentYear, currentChapter, chapters
           <button
             key={ev.year + '-' + ev.label + '-' + ev.originalIdx}
             type="button"
-            className={'timeline__event' + (ev.chapter === currentChapter ? ' is-active' : '')}
+            className={'timeline__event' + (isEventActive(ev, currentChapter) ? ' is-active' : '')}
             style={{
               left: `${trackPct(ev.year)}%`,
               '--lane': ev.lane,
@@ -216,4 +233,9 @@ export default function Timeline({ events, currentYear, currentChapter, chapters
       </div>
     </div>
   );
+}
+
+function isEventActive(event, currentChapter) {
+  if ((event.section || event.chapter) === currentChapter) return true;
+  return Boolean(event.targets?.some(target => target.section === currentChapter));
 }

@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 export default function TopNav({ state, dispatch, books }) {
   const book = books.find(b => b.id === state.bookId);
   const chapter = book?.chapters.find(c => c.id === state.chapterId);
+  const itemKind = book?.itemKind === 'article' ? '文章' : '篇章';
 
   return (
     <div className="topnav">
@@ -22,7 +23,7 @@ export default function TopNav({ state, dispatch, books }) {
       />
 
       <Picker
-        label={chapter ? chapter.title : "选择篇章"}
+        label={chapter ? chapter.title : `选择${itemKind}`}
         icon="chapter"
         items={book?.chapters.map(c => ({ id: c.id, label: c.title, sub: c.subtitle })) || []}
         selected={state.chapterId}

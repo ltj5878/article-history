@@ -6,8 +6,8 @@
 
 ## 功能概览
 
-- **5 本古籍 · 31 章原文**：《左传》《史记·项羽本纪》《史记·高祖本纪》《史记·秦始皇本纪》《史记》世家列传选
-- **章节级完整原文**：中华书局点校本，原文 + 现代汉语译文双栏对照
+- **2 本古籍入口**：《左传》保留章节阅读；《史记》归并为 6 篇文章：《项羽本纪》《高祖本纪》《秦始皇本纪》《越王勾践世家》《廉颇蔺相如列传》《刺客列传·荆轲》
+- **文章级阅读结构**：文章内保留小节标题，原文 + 现代汉语译文双栏对照
 - **专业历史地图**：MapLibre GL JS 渲染，使用 Natural Earth 1:50m 真实地理数据，自定义古风样式
 - **9 个历史时期疆界**：春秋早/中/晚 → 战国中/晚 → 秦帝国 → 楚汉 → 楚汉相争
 - **古今对照**：可切换"今省界"图层，将古地名与现代省份对应
@@ -19,7 +19,7 @@
 - **军事路线动画**：每段文本对应的进军路线在地图上以 faction 颜色绘制
 - **可拖动时间轴**：底部时间轴像长卷一样左右拖动，浏览整本书的事件
 - **三套主题**：古风（宣纸）/ 暗色 / 明亮，全 UI 切换
-- **段落级地图联动**：切换章节内段落时，地图自动 fitBounds 到对应区域
+- **段落级地图联动**：切换文章/章节内段落时，地图自动 fitBounds 到对应区域
 
 ## 技术栈
 
@@ -40,7 +40,7 @@
 │   │   ├── App.jsx        # 顶层状态机 + 三栏布局
 │   │   ├── api/client.js  # 后端 API 客户端
 │   │   ├── components/
-│   │   │   ├── TopNav.jsx       # 书籍/章节/模式/层切换
+│   │   │   ├── TopNav.jsx       # 书籍/文章/章节/模式/层切换
 │   │   │   ├── ReaderPane.jsx   # 古文阅读 + 实体气泡
 │   │   │   ├── MapPane.jsx      # MapLibre 地图 + 历史叠加层
 │   │   │   ├── Timeline.jsx     # 可拖动时间轴
@@ -51,12 +51,13 @@
 │   ├── index.js           # API 入口
 │   ├── data/
 │   │   ├── periods.js     # 9 个历史时期的疆界 + 城邑
-│   │   └── books/         # 5 本书的原文 + entity 标注
+│   │   └── books/         # 原文 + entity 标注
 │   │       ├── zuozhuan.js          # 左传 8 篇
-│   │       ├── xiangyu-benji.js     # 项羽本纪 11 章
-│   │       ├── gaozu-benji.js       # 高祖本纪 4 章
-│   │       ├── qin-shihuang-benji.js # 秦始皇本纪 4 章
-│   │       └── shiji-liezhuan.js    # 世家列传选 4 章
+│   │       ├── shiji.js             # 史记 6 篇文章聚合入口
+│   │       ├── xiangyu-benji.js     # 项羽本纪小节数据
+│   │       ├── gaozu-benji.js       # 高祖本纪小节数据
+│   │       ├── qin-shihuang-benji.js # 秦始皇本纪小节数据
+│   │       └── shiji-liezhuan.js    # 世家/列传小节数据
 │   └── geo/               # 真实地理数据（GeoJSON）
 │       ├── ne_coastline_china.geojson
 │       ├── ne_rivers_china.geojson
@@ -143,8 +144,9 @@ npm run preview    # 本地预览静态产物，访问 http://localhost:4173
 |---|---|---|
 | GET | `/api/health` | 健康检查 |
 | GET | `/api/books` | 列出全部书籍 |
-| GET | `/api/books/:id` | 单本书的元数据 + 章节列表 + 时间事件 |
+| GET | `/api/books/:id` | 单本书的元数据 + 文章/章节列表 + 时间事件 |
 | GET | `/api/books/:bookId/chapters/:chapterId` | 单章完整内容（原文/译文/entity/路线） |
+| GET | `/api/books/:bookId/articles/:articleId` | 单篇文章完整内容（小节/原文/译文/entity/路线） |
 | GET | `/api/maps/period/:periodId` | 单个历史时期的疆界数据 |
 | GET | `/api/geo/:layer` | 地理 GeoJSON 数据（coastline/rivers/lakes/land/provinces） |
 

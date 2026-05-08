@@ -13,6 +13,7 @@ export const api = {
   listBooks: (opts) => getJson('/books.json', opts),
   getBook: (bookId, opts) => getJson(`/books/${bookId}.json`, opts),
   getChapter: (bookId, chapterId, opts) => getJson(`/books/${bookId}/${chapterId}.json`, opts),
+  getArticle: (bookId, articleId, opts) => getJson(`/books/${bookId}/${articleId}.json`, opts),
   getPeriod: (periodId, opts) => getJson(`/periods/${periodId}.json`, opts),
   geoUrl: (layer) => `${DATA_BASE}/geo/${layer}.geojson`,
 };
