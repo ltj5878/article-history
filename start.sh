@@ -21,6 +21,7 @@ BACKEND_LOG_FILE="$LOG_DIR/backend.log"
 PY_BACKEND_HOST="${PY_BACKEND_HOST:-127.0.0.1}"
 PY_BACKEND_PORT="${PY_BACKEND_PORT:-8000}"
 PY_BACKEND_DB_URL="${PY_BACKEND_DB_URL:-sqlite:///$PY_BACKEND_DIR/.data/content.db}"
+PY_BACKEND_JWT_SECRET="${JWT_SECRET:-dev-only-change-me}"
 PY_BACKEND_PID_FILE="$RUN_DIR/python-backend.pid"
 PY_BACKEND_LOG_FILE="$LOG_DIR/python-backend.log"
 PYTHON_BIN="$PY_BACKEND_DIR/.venv/bin/python"
@@ -199,6 +200,7 @@ start_python_backend() {
   (
     cd "$PY_BACKEND_DIR"
     nohup env PYTHONPATH="$PY_BACKEND_DIR" DATABASE_URL="$PY_BACKEND_DB_URL" \
+      JWT_SECRET="$PY_BACKEND_JWT_SECRET" \
       "$PYTHON_BIN" -m uvicorn api.app:app --host "$PY_BACKEND_HOST" --port "$PY_BACKEND_PORT" \
       < /dev/null > "$PY_BACKEND_LOG_FILE" 2>&1 &
     echo $!
@@ -364,6 +366,7 @@ Environment overrides:
   PY_BACKEND_HOST default: 127.0.0.1
   PY_BACKEND_PORT default: 8000
   PY_BACKEND_DB_URL default: sqlite:///backend/.data/content.db
+  JWT_SECRET default: dev-only-change-me for local start-with-python
   VITE_API_BASE_URL default: empty for static-only frontend
 USAGE
 }

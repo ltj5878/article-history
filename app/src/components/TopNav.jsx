@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
+import AuthControl from './AuthControl';
 
-export default function TopNav({ state, dispatch, books }) {
+export default function TopNav({ state, dispatch, books, auth }) {
   const book = books.find(b => b.id === state.bookId);
   const chapter = book?.chapters.find(c => c.id === state.chapterId);
   const itemKind = book?.itemKind === 'article' ? '文章' : '篇章';
@@ -66,6 +67,9 @@ export default function TopNav({ state, dispatch, books }) {
         title="主题"
         onClick={() => dispatch({ type: "cycleTheme" })}
       />
+
+      <div className="topnav__divider topnav__divider--vert" />
+      <AuthControl auth={auth} />
     </div>
   );
 }

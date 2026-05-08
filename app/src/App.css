@@ -24,6 +24,85 @@
 .topnav__divider--vert { margin: 0 var(--sp-1); }
 .topnav__spacer { flex: 1; }
 
+.auth { position: relative; display: inline-flex; align-items: center; gap: 8px; }
+.auth__trigger,
+.auth__link,
+.auth__submit,
+.auth__tabs button {
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  background: transparent;
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  cursor: pointer;
+}
+.auth__trigger,
+.auth__link { height: 28px; padding: 0 10px; }
+.auth__trigger:hover,
+.auth__link:hover,
+.auth__tabs button:hover { background: var(--surface-2); }
+.auth__badge {
+  max-width: 220px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  padding: 0 9px;
+  color: var(--fg-2);
+}
+.auth__email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.auth__role { color: var(--fg-3); font-size: 11px; }
+.auth__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 1200;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-3);
+  box-shadow: var(--sh-2);
+}
+.auth__tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.auth__tabs button { height: 30px; }
+.auth__tabs button.is-active {
+  background: var(--c-ink);
+  border-color: var(--c-ink);
+  color: var(--c-paper);
+}
+.auth__field { display: flex; flex-direction: column; gap: 5px; color: var(--fg-3); font-size: 12px; }
+.auth__field input {
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 0 9px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+.auth__field input:focus { outline: 1px solid var(--c-indigo); border-color: var(--c-indigo); }
+.auth__error { color: var(--c-vermillion); font-size: 12px; line-height: 1.4; white-space: normal; }
+.auth__submit {
+  height: 34px;
+  background: var(--c-ink);
+  border-color: var(--c-ink);
+  color: var(--c-paper);
+}
+.auth__submit:disabled { opacity: 0.55; cursor: wait; }
+
 .iconbtn {
   width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--r-2);
   background: transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;

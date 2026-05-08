@@ -5,6 +5,7 @@ import MapPane from './components/MapPane';
 import Timeline from './components/Timeline';
 import ErrorBoundary from './components/ErrorBoundary';
 import { api } from './api/client';
+import { authClient } from './api/authClient';
 
 const PREFS_KEY = 'jingshi.prefs.v1';
 
@@ -87,6 +88,7 @@ function reducer(state, action) {
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const [authUser, setAuthUser] = useState(() => authClient.getStoredUser());
   const [allBooks, setAllBooks] = useState([]);
   const [bookMeta, setBookMeta] = useState(null);
   const [chapter, setChapter] = useState(null);
@@ -235,10 +237,24 @@ export default function App() {
       }))
     : [{ id: bookMeta.id, title: bookMeta.title, dynasty: bookMeta.dynasty, chapters: readingItems, itemKind: isArticleBook ? 'article' : 'chapter' }];
 
+  const auth = {
+    user: authUser,
+    login: async (email, password) => {
+      const result = await authClient.login(email, password);
+      setAuthUser(result.user);
+      return result;
+    },
+    register: (email, password) => authClient.register(email, password),
+    logout: () => {
+      authClient.logout();
+      setAuthUser(null);
+    },
+  };
+
   return (
     <ErrorBoundary>
       <div className="app">
-        <TopNav state={state} dispatch={dispatch} books={books} />
+        <TopNav state={state} dispatch={dispatch} books={books} auth={auth} />
         <div className="splitpane" style={{ '--split': `${state.splitRatio * 100}%` }}>
           <div className="splitpane__left">
             <ErrorBoundary>

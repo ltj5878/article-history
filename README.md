@@ -145,11 +145,24 @@ PYTHONPATH=backend backend/.venv/bin/python -m api.seed \
   --data-dir app/public/data
 
 # 启动 API
-PYTHONPATH=backend DATABASE_URL=sqlite:///backend/.data/content.db \
+PYTHONPATH=backend DATABASE_URL=sqlite:///backend/.data/content.db JWT_SECRET=dev-only-change-me \
   backend/.venv/bin/python -m uvicorn api.app:app --host 127.0.0.1 --port 8000
 ```
 
-上线时可将 `DATABASE_URL` 指向 Postgres/Supabase。当前阶段还没有登录注册和管理员 UI；这两块会在内容数据 Module 稳定后继续接入。
+上线时可将 `DATABASE_URL` 指向 Postgres/Supabase，并必须将 `JWT_SECRET` 设置为强随机密钥。当前阶段已经有注册、登录和管理员权限校验；完整管理员内容维护 UI 会在下一阶段接入。
+
+### 身份与权限
+
+Python 后端提供基础身份接口：
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/auth/register` | 注册普通用户 |
+| POST | `/api/auth/login` | 登录并返回 Bearer token |
+| GET | `/api/auth/me` | 返回当前登录用户 |
+| GET | `/api/admin/ping` | 管理员权限校验探针 |
+
+密码使用 Argon2id 哈希后入库；前端只把 access token 放在 `sessionStorage`。公开注册不会自动创建管理员账号，管理员角色目前通过数据库修改授予，后续管理员模块会复用已有权限校验。
 
 ## 部署到 Vercel / Netlify（纯静态）
 
