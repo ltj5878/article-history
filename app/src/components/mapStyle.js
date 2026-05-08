@@ -8,30 +8,22 @@ const GEO_BASE = `${import.meta.env.BASE_URL || '/'}data/geo`.replace(/\/+$/, ''
 
 // Color palette pulled from design tokens (var(--c-paper) etc not usable inside
 // MapLibre style spec, so duplicated as literals here).
-const PAPER = '#F5F0E8';
 const PAPER_2 = '#EDE5D3';
 const PAPER_3 = '#E4D9BF';
 const INK = '#1F1A14';
-const INK_2 = '#3B3328';
-const INK_3 = '#6B5F4E';
 const SEA = '#D9E4EC';
-const SEA_2 = '#C8D6E0';
 const RIVER = '#5B89B3';
 const RIVER_HIGHLIGHT = '#3D6890';
-const VERMILLION = '#C41E24';
 
 export function buildMapStyle({ theme = 'classic' } = {}) {
   const isDark = theme === 'dark';
   const isBright = theme === 'bright';
 
   // Theme-adjusted palette
-  const bg = isDark ? '#1E1A12' : isBright ? '#FFFFFF' : PAPER;
   const land = isDark ? '#2A2418' : isBright ? '#F5F2EA' : PAPER_2;
   const landShade = isDark ? '#332B1D' : isBright ? '#EDEAE0' : PAPER_3;
   const seaColor = isDark ? '#0F1A24' : isBright ? '#E8EFF5' : SEA;
-  const seaHatch = isDark ? '#1A2838' : isBright ? '#D5DFEA' : SEA_2;
   const inkColor = isDark ? '#C9BC9F' : INK;
-  const subtleInk = isDark ? '#9E9277' : INK_3;
 
   return {
     version: 8,

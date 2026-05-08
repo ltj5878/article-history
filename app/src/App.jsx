@@ -1,4 +1,4 @@
-import { useReducer, useEffect, useRef, useState } from 'react';
+import { useMemo, useReducer, useEffect, useRef, useState } from 'react';
 import TopNav from './components/TopNav';
 import ReaderPane from './components/ReaderPane';
 import MapPane from './components/MapPane';
@@ -126,6 +126,7 @@ export default function App() {
   // Load book metadata + chapter list when bookId changes
   useEffect(() => {
     // Clear stale data so the picker / reader don't show the previous book
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setBookMeta(null);
     setChapter(null);
     setPeriod(null);
@@ -136,7 +137,7 @@ export default function App() {
     return () => ctrl.abort();
   }, [state.bookId]);
 
-  const readingItems = bookMeta?.articles || bookMeta?.chapters || [];
+  const readingItems = useMemo(() => bookMeta?.articles || bookMeta?.chapters || [], [bookMeta]);
   const isArticleBook = Boolean(bookMeta?.articles);
 
   // Whenever bookMeta loads or chapter is null, ensure a reading item is selected.
@@ -174,6 +175,7 @@ export default function App() {
 
   useEffect(() => {
     if (!periodId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPeriod(null);
       return;
     }

@@ -3,6 +3,8 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 export default function ReaderPane({ chapter, state, dispatch }) {
   const containerRef = useRef(null);
   const [popover, setPopover] = useState(null);  // { entity, x, y } | null
+  const popoverContext = `${chapter?.id || 'none'}:${state.activeParagraph || 'none'}`;
+  const activePopover = popover?.context === popoverContext ? popover : null;
 
   useEffect(() => {
     if (state.activeParagraph === getFirstParagraphId(chapter)) return;
@@ -12,7 +14,7 @@ export default function ReaderPane({ chapter, state, dispatch }) {
 
   // Close popover when clicking outside or pressing Esc
   useEffect(() => {
-    if (!popover) return;
+    if (!activePopover) return;
     const onDoc = (e) => {
       if (e.target.closest('.ent-popover') || e.target.closest('.ent')) return;
       setPopover(null);
@@ -24,20 +26,17 @@ export default function ReaderPane({ chapter, state, dispatch }) {
       document.removeEventListener('click', onDoc);
       document.removeEventListener('keydown', onKey);
     };
-  }, [popover]);
-
-  // Close popover on chapter/paragraph change
-  useEffect(() => { setPopover(null); }, [state.activeParagraph, chapter?.id]);
+  }, [activePopover]);
 
   // Close popover when the reader body scrolls — its anchor would otherwise drift
   useEffect(() => {
-    if (!popover) return;
+    if (!activePopover) return;
     const body = containerRef.current;
     if (!body) return;
     const onScroll = () => setPopover(null);
     body.addEventListener('scroll', onScroll, { passive: true });
     return () => body.removeEventListener('scroll', onScroll);
-  }, [popover]);
+  }, [activePopover]);
 
   const onEntityClick = useCallback((entity, ev) => {
     ev.stopPropagation();
@@ -56,8 +55,9 @@ export default function ReaderPane({ chapter, state, dispatch }) {
       // Position relative to the .reader__body container so popover scrolls with content
       x: rect.left - containerRect.left + rect.width / 2,
       y: rect.bottom - containerRect.top + 6,
+      context: popoverContext,
     });
-  }, [dispatch]);
+  }, [dispatch, popoverContext]);
 
   if (!chapter) return <div className="reader reader--empty">选择一篇章以开始阅读</div>;
 
@@ -86,11 +86,11 @@ export default function ReaderPane({ chapter, state, dispatch }) {
         <div className="reader__endseal">
           <img src="/assets/seal-du.svg" alt="读" />
         </div>
-        {popover && (
+        {activePopover && (
           <EntityPopover
-            entity={popover.entity}
-            x={popover.x}
-            y={popover.y}
+            entity={activePopover.entity}
+            x={activePopover.x}
+            y={activePopover.y}
             onClose={() => setPopover(null)}
           />
         )}

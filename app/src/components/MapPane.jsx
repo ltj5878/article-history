@@ -101,7 +101,8 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
   const mapInstance = useRef(null);
   const markers = useRef({ states: [], cities: [], pois: [], provinces: [] });
   const [mapReady, setMapReady] = useState(false);
-  const [animKey, setAnimKey] = useState(0);
+  const [replayKey, setReplayKey] = useState(0);
+  const animKey = `${paragraph?.id || 'none'}:${replayKey}`;
 
   // Show ALL place entities from the entire chapter (across all paragraphs), not
   // just the active paragraph. Deduplication is name + proximity-based: two
@@ -145,8 +146,6 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
       Math.abs(a.lng - e.lng) < SAME_PLACE_THRESHOLD_DEG
     );
   }, [activeEntityKeys]);
-
-  useEffect(() => { setAnimKey(k => k + 1); }, [paragraph?.id]);
 
   // Initialize MapLibre — wait for ref to be attached
   useEffect(() => {
@@ -200,7 +199,7 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
       Object.values(markers.current).forEach(arr => arr.forEach(mk => mk.remove?.()));
       markers.current = { states: [], cities: [], pois: [], provinces: [] };
       if (m) {
-        try { m.remove(); } catch (e) { /* noop */ }
+        try { m.remove(); } catch { /* noop */ }
       }
       mapInstance.current = null;
       setMapReady(false);
@@ -290,7 +289,7 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
       setMapReady(true);
     });
     } // end attachMapHandlers
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Theme change → rebuild style
   useEffect(() => {
@@ -311,7 +310,7 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
         map.addLayer({ id: 'route-points', type: 'circle', source: 'route-points', paint: { 'circle-color': ['get', 'color'], 'circle-radius': 3.5, 'circle-stroke-color': '#F5F0E8', 'circle-stroke-width': 1.2 } });
       }
     });
-  }, [state.theme]);
+  }, [state.theme]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // === Modern province layer (toggleable, for古今对照) ===
   useEffect(() => {
@@ -323,7 +322,7 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
       map.setLayoutProperty('province-fill', 'visibility', visibility);
       map.setLayoutProperty('province-outline-halo', 'visibility', visibility);
       map.setLayoutProperty('province-outline', 'visibility', visibility);
-    } catch (e) {
+    } catch {
       // Layer may not be ready yet during style swaps; ignore
     }
 
@@ -530,7 +529,7 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
     if (!bounds.isEmpty()) {
       map.fitBounds(bounds, { padding: 80, duration: 800, maxZoom: 6.5 });
     }
-  }, [chapter?.id, mapReady]);
+  }, [chapter?.id, mapReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Active paragraph remains the primary map focus. This matters for article
   // mode where one reading unit can contain many historical scenes.
@@ -547,14 +546,14 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
     if (!bounds.isEmpty()) {
       map.fitBounds(bounds, { padding: 90, duration: 650, maxZoom: 7 });
     }
-  }, [paragraph?.id, mapReady]);
+  }, [paragraph?.id, mapReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleZoomIn = useCallback(() => mapInstance.current?.zoomIn(), []);
   const handleZoomOut = useCallback(() => mapInstance.current?.zoomOut(), []);
   const handleRecenter = useCallback(() => {
     mapInstance.current?.flyTo({ center: CENTER, zoom: DEFAULT_ZOOM, duration: 600 });
   }, []);
-  const handleReplay = useCallback(() => setAnimKey(k => k + 1), []);
+  const handleReplay = useCallback(() => setReplayKey(k => k + 1), []);
 
   return (
     <div className="map">
@@ -586,7 +585,7 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
       )}
 
       <div className="map__legend map__legend--full">
-        <div className="legend__title">图　例</div>
+        <div className="legend__title">图例</div>
         <div className="legend__row"><svg width="22" height="14"><rect x="3" y="3" width="14" height="8" fill="#C41E24" stroke="#1F1A14" strokeWidth="1"/></svg><span>诸侯国都</span></div>
         <div className="legend__row"><svg width="22" height="14"><circle cx="11" cy="7" r="4" fill="#FFFFFF" stroke="#1F1A14" strokeWidth="1.2"/><circle cx="11" cy="7" r="1.6" fill="#1F1A14"/></svg><span>主要城邑</span></div>
         <div className="legend__row"><svg width="22" height="14"><g transform="translate(11,7) rotate(45)"><rect x="-5" y="-5" width="10" height="10" fill="#E8553A" stroke="#1F1A14" strokeWidth="1"/></g></svg><span>战场</span></div>

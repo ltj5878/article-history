@@ -89,11 +89,13 @@ export default function Timeline({ events, currentYear, currentChapter, collapse
     if (!viewportW || currentYear == null) return;
     const targetX = (trackPct(currentYear) / 100) * trackW;
     const desiredPan = clampPan(viewportW / 2 - targetX);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPan(desiredPan);
   }, [currentChapter, currentYear, viewportW, trackW]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-clamp pan when viewport / track size changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPan(p => clampPan(p));
   }, [trackW, viewportW, clampPan]);
 
