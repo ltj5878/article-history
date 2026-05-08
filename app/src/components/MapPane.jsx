@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { buildMapStyle } from './mapStyle';
+import { api } from '../api/client';
 
 const CENTER = [113, 34];
 const DEFAULT_ZOOM = 4.5;
@@ -329,7 +330,7 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
     const data = typeof src._data === 'string' ? null : src._data;
     if (!data?.features) {
       // Source data is a URL string (lazy-loaded). Fetch directly to read centers.
-      fetch(`${import.meta.env.VITE_API_BASE || 'http://localhost:4000/api'}/geo/china_provinces`)
+      fetch(api.geoUrl('china_provinces'))
         .then(r => r.json())
         .then(geo => {
           if (!state.layers.provinces) return;  // user toggled off while fetching

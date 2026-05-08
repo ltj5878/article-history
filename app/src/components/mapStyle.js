@@ -1,9 +1,10 @@
 // 古风地图样式表 (MapLibre style spec)
 // Hybrid of 谭其骧《中国历史地图集》 (precise borders, fine ink lines, neutral fills)
 // and 明清舆图 (rice-paper texture, indigo water, brushy mountains).
-// All sources are GeoJSON served by our backend.
+// GeoJSON sources are pre-built static files under /data/geo (see
+// scripts/build-data.mjs).
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000/api';
+const GEO_BASE = `${import.meta.env.BASE_URL || '/'}data/geo`.replace(/\/+$/, '');
 
 // Color palette pulled from design tokens (var(--c-paper) etc not usable inside
 // MapLibre style spec, so duplicated as literals here).
@@ -50,11 +51,11 @@ export function buildMapStyle({ theme = 'classic' } = {}) {
           }],
         },
       },
-      'ne-land': { type: 'geojson', data: `${API_BASE}/geo/ne_land_china` },
-      'ne-coastline': { type: 'geojson', data: `${API_BASE}/geo/ne_coastline_china` },
-      'ne-rivers': { type: 'geojson', data: `${API_BASE}/geo/ne_rivers_china` },
-      'ne-lakes': { type: 'geojson', data: `${API_BASE}/geo/ne_lakes_china` },
-      'china-provinces': { type: 'geojson', data: `${API_BASE}/geo/china_provinces` },
+      'ne-land': { type: 'geojson', data: `${GEO_BASE}/ne_land_china.geojson` },
+      'ne-coastline': { type: 'geojson', data: `${GEO_BASE}/ne_coastline_china.geojson` },
+      'ne-rivers': { type: 'geojson', data: `${GEO_BASE}/ne_rivers_china.geojson` },
+      'ne-lakes': { type: 'geojson', data: `${GEO_BASE}/ne_lakes_china.geojson` },
+      'china-provinces': { type: 'geojson', data: `${GEO_BASE}/china_provinces.geojson` },
     },
     layers: [
       // ---------- Sea base (rice-paper bluish wash) ----------

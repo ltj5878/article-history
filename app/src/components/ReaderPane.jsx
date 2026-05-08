@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 
 export default function ReaderPane({ chapter, state, dispatch }) {
   const containerRef = useRef(null);
@@ -27,6 +27,16 @@ export default function ReaderPane({ chapter, state, dispatch }) {
 
   // Close popover on chapter/paragraph change
   useEffect(() => { setPopover(null); }, [state.activeParagraph, chapter?.id]);
+
+  // Close popover when the reader body scrolls — its anchor would otherwise drift
+  useEffect(() => {
+    if (!popover) return;
+    const body = containerRef.current;
+    if (!body) return;
+    const onScroll = () => setPopover(null);
+    body.addEventListener('scroll', onScroll, { passive: true });
+    return () => body.removeEventListener('scroll', onScroll);
+  }, [popover]);
 
   const onEntityClick = useCallback((entity, ev) => {
     ev.stopPropagation();
@@ -93,7 +103,7 @@ function Paragraph({ idx, para, state, dispatch, onEntityClick }) {
       <div className="para__num">{(idx + 1).toString().padStart(2, "0")}</div>
       {showOriginal && (
         <p className="para__original">
-          {renderWithEntities(para.original, para.entities, onEntityClick)}
+          <ParagraphOriginal text={para.original} entities={para.entities} onEntityClick={onEntityClick} />
         </p>
       )}
       {showTranslation && (
@@ -103,21 +113,9 @@ function Paragraph({ idx, para, state, dispatch, onEntityClick }) {
   );
 }
 
-function renderWithEntities(text, entities, onEntityClick) {
-  if (!entities || !entities.length) return text;
-  const sorted = [...entities].sort((a, b) => b.text.length - a.text.length);
-  const matches = [];
-  for (const e of sorted) {
-    let from = 0;
-    while (from < text.length) {
-      const idx = text.indexOf(e.text, from);
-      if (idx === -1) break;
-      const overlaps = matches.some(m => idx < m.end && idx + e.text.length > m.start);
-      if (!overlaps) matches.push({ start: idx, end: idx + e.text.length, ent: e });
-      from = idx + e.text.length;
-    }
-  }
-  matches.sort((a, b) => a.start - b.start);
+function ParagraphOriginal({ text, entities, onEntityClick }) {
+  const matches = useMemo(() => computeEntityMatches(text, entities), [text, entities]);
+  if (!matches.length) return text;
   const out = [];
   let cursor = 0;
   matches.forEach((m, i) => {
@@ -133,6 +131,24 @@ function renderWithEntities(text, entities, onEntityClick) {
   });
   if (cursor < text.length) out.push(text.slice(cursor));
   return out;
+}
+
+function computeEntityMatches(text, entities) {
+  if (!entities || !entities.length) return [];
+  const sorted = [...entities].sort((a, b) => b.text.length - a.text.length);
+  const matches = [];
+  for (const e of sorted) {
+    let from = 0;
+    while (from < text.length) {
+      const idx = text.indexOf(e.text, from);
+      if (idx === -1) break;
+      const overlaps = matches.some(m => idx < m.end && idx + e.text.length > m.start);
+      if (!overlaps) matches.push({ start: idx, end: idx + e.text.length, ent: e });
+      from = idx + e.text.length;
+    }
+  }
+  matches.sort((a, b) => a.start - b.start);
+  return matches;
 }
 
 // === Inline popover for person/event entities ===

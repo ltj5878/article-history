@@ -175,10 +175,10 @@ start_frontend() {
   # Detach: nohup + disown + redirect all 3 streams (npm run dev keeps the
   # terminal busy if stdin isn't closed; vite's dev server stdout otherwise
   # buffers through the parent shell and looks like a hang).
+  # Frontend reads pre-built static JSON from /data — no backend needed.
   (
     cd "$APP_DIR"
-    nohup env VITE_API_BASE="http://$BACKEND_HOST:$BACKEND_PORT/api" \
-      npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
+    nohup npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
       < /dev/null > "$FRONTEND_LOG_FILE" 2>&1 &
     echo $!
   ) > "$RUN_DIR/.frontend.pid.tmp"
@@ -204,11 +204,24 @@ status_frontend() {
 
 # === Combined commands ===
 
+# Default: frontend only — the project now ships pre-built static JSON
+# (app/scripts/build-data.mjs runs as a Vite predev hook), so the Express
+# backend is no longer needed for normal local development.
 start_all() {
+  start_frontend
+  log ""
+  log "经史舆图 启动完成（纯前端模式）"
+  log "  前端: http://$FRONTEND_HOST:$FRONTEND_PORT"
+  log "  日志: $LOG_DIR/"
+  log ""
+  log "如需同时启动旧版 Express 后端：./start.sh start-with-backend"
+}
+
+start_with_backend() {
   start_backend
   start_frontend
   log ""
-  log "经史舆图 启动完成"
+  log "经史舆图 启动完成（前端 + 后端）"
   log "  前端: http://$FRONTEND_HOST:$FRONTEND_PORT"
   log "  后端: http://$BACKEND_HOST:$BACKEND_PORT/api"
   log "  日志: $LOG_DIR/"
@@ -229,16 +242,20 @@ usage() {
 Usage: ./start.sh [command]
 
 Commands:
-  start              Start backend + frontend (default)
-  stop               Stop both
-  restart            Stop then start both
-  status             Show running state of both
-  start-backend      Start only the backend
-  start-frontend     Start only the frontend
-  stop-backend       Stop only the backend
-  stop-frontend      Stop only the frontend
-  logs [be|fe]       Tail backend (be) or frontend (fe) log; defaults to both
-  help               Show this message
+  start                 Start frontend only — the default since the project
+                        now reads pre-built static JSON and no longer needs
+                        the Express backend.
+  start-with-backend    Start both frontend and the legacy Express backend.
+  stop                  Stop both (frontend + backend if running).
+  restart               Stop both, then run 'start' (frontend only).
+  restart-with-backend  Stop both, then run 'start-with-backend'.
+  status                Show running state of both.
+  start-backend         Start only the backend.
+  start-frontend        Start only the frontend.
+  stop-backend          Stop only the backend.
+  stop-frontend         Stop only the frontend.
+  logs [be|fe]          Tail backend (be) or frontend (fe) log; defaults to both.
+  help                  Show this message.
 
 Environment overrides:
   FRONTEND_HOST  default: 127.0.0.1
@@ -267,12 +284,19 @@ case "${1:-start}" in
   start)
     start_all
     ;;
+  start-with-backend)
+    start_with_backend
+    ;;
   stop)
     stop_all
     ;;
   restart)
     stop_all
     start_all
+    ;;
+  restart-with-backend)
+    stop_all
+    start_with_backend
     ;;
   status)
     status_all

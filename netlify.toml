@@ -1,0 +1,10 @@
+[build]
+  base    = "app"
+  command = "npm install && npm run build"
+  publish = "dist"
+
+# SPA fallback — every unknown route returns index.html
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200

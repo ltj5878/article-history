@@ -77,11 +77,16 @@
 
 ### 启动
 
-```bash
-# 一键启动前后端
-./start.sh start
+项目目前以纯前端模式运行——所有数据由 `app/scripts/build-data.mjs` 在
+`npm run dev` 之前预生成成静态 JSON，前端直接 fetch，**不再需要后端**。
 
-# 输出
+```bash
+# 默认：只启前端（纯静态数据）
+./start.sh start
+#   前端: http://127.0.0.1:5174
+
+# 兼容旧用法：同时启动 Express 后端（一般不需要）
+./start.sh start-with-backend
 #   前端: http://127.0.0.1:5174
 #   后端: http://127.0.0.1:4000/api
 ```
@@ -89,13 +94,14 @@
 ### 其他命令
 
 ```bash
-./start.sh stop              # 停止两个服务
-./start.sh restart           # 重启
-./start.sh status            # 查看运行状态
-./start.sh start-backend     # 只启后端
-./start.sh start-frontend    # 只启前端
-./start.sh logs              # 实时查看日志
-./start.sh help              # 查看完整命令
+./start.sh stop                    # 停止运行中的所有服务
+./start.sh restart                 # 重启（前端模式）
+./start.sh restart-with-backend    # 重启（前端 + 后端）
+./start.sh status                  # 查看运行状态
+./start.sh start-backend           # 只启后端
+./start.sh start-frontend          # 只启前端
+./start.sh logs                    # 实时查看日志
+./start.sh help                    # 查看完整命令
 ```
 
 ### 自定义端口
@@ -103,6 +109,33 @@
 ```bash
 FRONTEND_PORT=5180 BACKEND_PORT=4001 ./start.sh start
 ```
+
+## 部署到 Vercel / Netlify（纯静态）
+
+项目可作为纯静态站点部署，无需后端。原 `server/data` 中的书籍/时期/地理数据会在
+构建时由 `app/scripts/build-data.mjs` 序列化为 JSON 文件输出到 `app/public/data/`，
+前端运行时直接 fetch 这些文件，构建产物即可托管到任意 CDN。
+
+### 本地试构建
+
+```bash
+cd app
+npm install
+npm run build      # 自动跑 prebuild 生成 public/data/，再 vite build
+npm run preview    # 本地预览静态产物，访问 http://localhost:4173
+```
+
+### Vercel
+
+仓库根目录已包含 `vercel.json`。在 Vercel 导入仓库后无需任何额外设置，使用默认部署即可。
+
+### Netlify
+
+仓库根目录已包含 `netlify.toml`（`base = "app"`，`publish = "dist"`，含 SPA fallback）。
+导入仓库后默认设置即可部署。
+
+> 注意：`app/public/data/` 是生成产物，已加入 `.gitignore`。本地开发执行
+> `npm run dev` 时会自动通过 `predev` 脚本生成。
 
 ## API 接口
 

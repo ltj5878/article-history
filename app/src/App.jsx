@@ -6,18 +6,31 @@ import Timeline from './components/Timeline';
 import ErrorBoundary from './components/ErrorBoundary';
 import { api } from './api/client';
 
+const PREFS_KEY = 'jingshi.prefs.v1';
+
+function loadPrefs() {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+const savedPrefs = loadPrefs();
+
 const initialState = {
-  bookId: 'xiangyu',
+  bookId: savedPrefs.bookId || 'xiangyu',
   bookTitle: '项羽本纪',
   dynasty: '西汉',
   chapterId: null,
   activeParagraph: null,
   textMode: 'both',
   vertical: false,
-  theme: 'classic',
+  theme: savedPrefs.theme || 'classic',
   layers: { places: true, routes: true, territories: true, provinces: true },
   selectedPlace: null,
-  splitRatio: 0.4,
+  splitRatio: typeof savedPrefs.splitRatio === 'number' ? savedPrefs.splitRatio : 0.4,
 };
 
 function reducer(state, action) {
@@ -64,11 +77,26 @@ export default function App() {
     else document.documentElement.removeAttribute('data-theme');
   }, [state.theme]);
 
+  // Persist user preferences
+  useEffect(() => {
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify({
+        bookId: state.bookId,
+        theme: state.theme,
+        splitRatio: state.splitRatio,
+      }));
+    } catch {
+      // localStorage may be unavailable (private mode, quota); ignore
+    }
+  }, [state.bookId, state.theme, state.splitRatio]);
+
   // Load global book list once
   useEffect(() => {
-    api.listBooks()
+    const ctrl = new AbortController();
+    api.listBooks({ signal: ctrl.signal })
       .then(setAllBooks)
-      .catch(e => setError(e.message));
+      .catch(e => { if (e.name !== 'AbortError') setError(e.message); });
+    return () => ctrl.abort();
   }, []);
 
   // Load book metadata + chapter list when bookId changes
@@ -77,9 +105,11 @@ export default function App() {
     setBookMeta(null);
     setChapter(null);
     setPeriod(null);
-    api.getBook(state.bookId)
+    const ctrl = new AbortController();
+    api.getBook(state.bookId, { signal: ctrl.signal })
       .then(b => setBookMeta(b))
-      .catch(e => setError(e.message));
+      .catch(e => { if (e.name !== 'AbortError') setError(e.message); });
+    return () => ctrl.abort();
   }, [state.bookId]);
 
   // Whenever bookMeta loads or chapter is null, ensure a chapter is selected.
@@ -94,18 +124,21 @@ export default function App() {
   // Load chapter content when chapterId changes
   useEffect(() => {
     if (!state.chapterId) return;
-    api.getChapter(state.bookId, state.chapterId)
+    const ctrl = new AbortController();
+    api.getChapter(state.bookId, state.chapterId, { signal: ctrl.signal })
       .then(c => {
         setChapter(c);
         if (c.paragraphs?.[0]) {
           dispatch({ type: 'set', key: 'activeParagraph', value: c.paragraphs[0].id });
         }
-        // Load period for this chapter
         if (c.period) {
-          api.getPeriod(c.period).then(setPeriod).catch(e => setError(e.message));
+          api.getPeriod(c.period, { signal: ctrl.signal })
+            .then(setPeriod)
+            .catch(e => { if (e.name !== 'AbortError') setError(e.message); });
         }
       })
-      .catch(e => setError(e.message));
+      .catch(e => { if (e.name !== 'AbortError') setError(e.message); });
+    return () => ctrl.abort();
   }, [state.chapterId, state.bookId]);
 
   const paragraph = chapter?.paragraphs?.find(p => p.id === state.activeParagraph) || chapter?.paragraphs?.[0];
@@ -122,17 +155,28 @@ export default function App() {
       const dx = e.clientX - dragRef.current.startX;
       dispatch({ type: 'setSplit', value: dragRef.current.startRatio + dx / dragRef.current.w });
     };
-    const up = () => { dragRef.current = null; document.body.style.cursor = ''; };
+    const stop = () => {
+      if (!dragRef.current) return;
+      dragRef.current = null;
+      document.body.style.cursor = '';
+    };
     window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
-    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+    window.addEventListener('mouseup', stop);
+    window.addEventListener('blur', stop);
+    document.addEventListener('mouseleave', stop);
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', stop);
+      window.removeEventListener('blur', stop);
+      document.removeEventListener('mouseleave', stop);
+    };
   }, []);
 
   if (error) {
     return <div style={{ padding: 40, fontFamily: 'var(--font-serif)' }}>
-      <h2>无法连接到后端</h2>
+      <h2>无法加载数据</h2>
       <p>{error}</p>
-      <p style={{ fontSize: 13, color: '#6B5F4E' }}>请确保后端服务运行在 http://localhost:4000 — 在 server/ 目录下执行 <code>node index.js</code></p>
+      <p style={{ fontSize: 13, color: '#6B5F4E' }}>若是本地开发，请先在 <code>app/</code> 目录下执行 <code>npm run build:data</code> 生成静态数据。</p>
     </div>;
   }
 
@@ -148,26 +192,30 @@ export default function App() {
     : [{ id: bookMeta.id, title: bookMeta.title, dynasty: bookMeta.dynasty, chapters: bookMeta.chapters }];
 
   return (
-    <div className="app">
-      <TopNav state={state} dispatch={dispatch} books={books} />
-      <div className="splitpane" style={{ '--split': `${state.splitRatio * 100}%` }}>
-        <div className="splitpane__left">
-          <ReaderPane chapter={chapter} state={{ ...state, bookTitle: bookMeta.title, dynasty: bookMeta.dynasty }} dispatch={dispatch} />
+    <ErrorBoundary>
+      <div className="app">
+        <TopNav state={state} dispatch={dispatch} books={books} />
+        <div className="splitpane" style={{ '--split': `${state.splitRatio * 100}%` }}>
+          <div className="splitpane__left">
+            <ErrorBoundary>
+              <ReaderPane chapter={chapter} state={{ ...state, bookTitle: bookMeta.title, dynasty: bookMeta.dynasty }} dispatch={dispatch} />
+            </ErrorBoundary>
+          </div>
+          <div className="splitpane__gutter" onMouseDown={onSplitDown} />
+          <div className="splitpane__right">
+            <ErrorBoundary>
+              <MapPane paragraph={paragraph} state={state} dispatch={dispatch} chapter={chapter} period={period} />
+            </ErrorBoundary>
+          </div>
         </div>
-        <div className="splitpane__gutter" onMouseDown={onSplitDown} />
-        <div className="splitpane__right">
-          <ErrorBoundary>
-            <MapPane paragraph={paragraph} state={state} dispatch={dispatch} chapter={chapter} period={period} />
-          </ErrorBoundary>
-        </div>
+        <Timeline
+          events={bookMeta.eraEvents || []}
+          chapters={bookMeta.chapters || []}
+          currentChapter={state.chapterId}
+          currentYear={chapter?.year}
+          onPick={(ev) => dispatch({ type: 'pickEra', event: ev })}
+        />
       </div>
-      <Timeline
-        events={bookMeta.eraEvents || []}
-        chapters={bookMeta.chapters || []}
-        currentChapter={state.chapterId}
-        currentYear={chapter?.year}
-        onPick={(ev) => dispatch({ type: 'pickEra', event: ev })}
-      />
-    </div>
+    </ErrorBoundary>
   );
 }

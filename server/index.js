@@ -32,6 +32,9 @@ function getBookModule(id) {
   return BOOK_MODULES[id] || null;
 }
 
+// Static JSON data is loaded from in-memory modules — safe to cache briefly.
+const JSON_CACHE = 'public, max-age=300';
+
 // === Books listing ===
 app.get('/api/books', (req, res) => {
   const list = Object.values(BOOK_MODULES).map(m => ({
@@ -43,12 +46,14 @@ app.get('/api/books', (req, res) => {
     description: m.book.description,
     chapterCount: m.chapters.length,
   }));
+  res.set('Cache-Control', JSON_CACHE);
   res.json(list);
 });
 
 app.get('/api/books/:id', (req, res) => {
   const m = getBookModule(req.params.id);
   if (!m) return res.status(404).json({ error: 'Book not found' });
+  res.set('Cache-Control', JSON_CACHE);
   res.json({
     ...m.book,
     chapters: m.chapters.map(c => ({ id: c.id, title: c.title, subtitle: c.subtitle, year: c.year })),
@@ -62,6 +67,7 @@ app.get('/api/books/:bookId/chapters/:chapterId', (req, res) => {
   if (!m) return res.status(404).json({ error: 'Book not found' });
   const ch = m.chapters.find(c => c.id === req.params.chapterId);
   if (!ch) return res.status(404).json({ error: 'Chapter not found' });
+  res.set('Cache-Control', JSON_CACHE);
   res.json(ch);
 });
 
@@ -69,6 +75,7 @@ app.get('/api/books/:bookId/chapters/:chapterId', (req, res) => {
 app.get('/api/maps/period/:periodId', (req, res) => {
   const p = periods[req.params.periodId];
   if (!p) return res.status(404).json({ error: 'Period not found', requested: req.params.periodId, available: Object.keys(periods) });
+  res.set('Cache-Control', JSON_CACHE);
   res.json(p);
 });
 
@@ -80,7 +87,13 @@ app.get('/api/geo/:layer', (req, res) => {
   const filePath = path.join(GEO_DIR, `${req.params.layer}.geojson`);
   res.set('Cache-Control', 'public, max-age=86400');
   res.set('Content-Type', 'application/geo+json');
-  fs.createReadStream(filePath).pipe(res);
+  const stream = fs.createReadStream(filePath);
+  stream.on('error', err => {
+    console.error(`[geo] failed to stream ${req.params.layer}:`, err.message);
+    if (!res.headersSent) res.status(500).json({ error: 'Failed to read geo layer' });
+    else res.destroy(err);
+  });
+  stream.pipe(res);
 });
 
 // === Health ===
@@ -93,6 +106,16 @@ app.get('/api/health', (req, res) => {
     periods: Object.keys(periods),
   });
 });
+
+// Global error handler — logs unexpected failures with a stack.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error(`[error] ${req.method} ${req.originalUrl}:`, err);
+  if (res.headersSent) return;
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+process.on('unhandledRejection', err => console.error('[unhandledRejection]', err));
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
