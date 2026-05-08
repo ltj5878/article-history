@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$ROOT_DIR/app"
 SERVER_DIR="$ROOT_DIR/server"
+PY_BACKEND_DIR="$ROOT_DIR/backend"
 RUN_DIR="$ROOT_DIR/.run"
 LOG_DIR="$ROOT_DIR/logs"
 
@@ -16,6 +17,13 @@ BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
 BACKEND_PORT="${BACKEND_PORT:-4000}"
 BACKEND_PID_FILE="$RUN_DIR/backend.pid"
 BACKEND_LOG_FILE="$LOG_DIR/backend.log"
+
+PY_BACKEND_HOST="${PY_BACKEND_HOST:-127.0.0.1}"
+PY_BACKEND_PORT="${PY_BACKEND_PORT:-8000}"
+PY_BACKEND_DB_URL="${PY_BACKEND_DB_URL:-sqlite:///$PY_BACKEND_DIR/.data/content.db}"
+PY_BACKEND_PID_FILE="$RUN_DIR/python-backend.pid"
+PY_BACKEND_LOG_FILE="$LOG_DIR/python-backend.log"
+PYTHON_BIN="$PY_BACKEND_DIR/.venv/bin/python"
 
 mkdir -p "$RUN_DIR" "$LOG_DIR"
 
@@ -130,7 +138,7 @@ start_backend() {
 
   # Wait briefly for health check to pass so the frontend doesn't see a cold backend
   for _ in {1..30}; do
-    if curl -fs "http://$BACKEND_HOST:$BACKEND_PORT/api/health" >/dev/null 2>&1; then
+    if curl --noproxy '*' -fs "http://$BACKEND_HOST:$BACKEND_PORT/api/health" >/dev/null 2>&1; then
       log "Backend healthy"
       return 0
     fi
@@ -149,6 +157,78 @@ status_backend() {
     log "Backend:  running on http://$BACKEND_HOST:$BACKEND_PORT (pid $pid)"
   else
     log "Backend:  stopped"
+  fi
+}
+
+# === Python content backend ===
+
+install_python_backend_deps() {
+  if [[ ! -x "$PYTHON_BIN" ]]; then
+    log "Creating Python backend virtualenv..."
+    python3 -m venv "$PY_BACKEND_DIR/.venv"
+  fi
+  if ! "$PYTHON_BIN" -c "import fastapi, sqlalchemy, pytest" >/dev/null 2>&1; then
+    log "Installing Python backend dependencies..."
+    "$PYTHON_BIN" -m pip install -r "$PY_BACKEND_DIR/requirements.txt"
+  fi
+}
+
+seed_python_backend() {
+  if [[ ! -f "$APP_DIR/public/data/books.json" ]]; then
+    log "Generating static seed data..."
+    (cd "$APP_DIR" && npm run build:data)
+  fi
+  log "Seeding Python backend database..."
+  PYTHONPATH="$PY_BACKEND_DIR" "$PYTHON_BIN" -m api.seed \
+    --db-url "$PY_BACKEND_DB_URL" \
+    --data-dir "$APP_DIR/public/data"
+}
+
+start_python_backend() {
+  local pid
+  if pid="$(service_running_pid "$PY_BACKEND_PID_FILE" "$PY_BACKEND_PORT")"; then
+    log "Python backend already running on http://$PY_BACKEND_HOST:$PY_BACKEND_PORT (pid $pid)"
+    printf '%s\n' "$pid" > "$PY_BACKEND_PID_FILE"
+    return 0
+  fi
+
+  install_python_backend_deps
+  seed_python_backend
+
+  log "Starting Python backend on http://$PY_BACKEND_HOST:$PY_BACKEND_PORT"
+  (
+    cd "$PY_BACKEND_DIR"
+    nohup env PYTHONPATH="$PY_BACKEND_DIR" DATABASE_URL="$PY_BACKEND_DB_URL" \
+      "$PYTHON_BIN" -m uvicorn api.app:app --host "$PY_BACKEND_HOST" --port "$PY_BACKEND_PORT" \
+      < /dev/null > "$PY_BACKEND_LOG_FILE" 2>&1 &
+    echo $!
+  ) > "$RUN_DIR/.python-backend.pid.tmp"
+  pid="$(cat "$RUN_DIR/.python-backend.pid.tmp")"
+  rm -f "$RUN_DIR/.python-backend.pid.tmp"
+  printf '%s\n' "$pid" > "$PY_BACKEND_PID_FILE"
+  disown 2>/dev/null || true
+  log "Python backend started (pid $pid, log $PY_BACKEND_LOG_FILE)"
+
+  for _ in {1..30}; do
+    if curl --noproxy '*' -fs "http://$PY_BACKEND_HOST:$PY_BACKEND_PORT/api/health" >/dev/null 2>&1; then
+      log "Python backend healthy"
+      return 0
+    fi
+    sleep 0.2
+  done
+  log "Warning: Python backend did not respond to /api/health within 6s — see $PY_BACKEND_LOG_FILE"
+}
+
+stop_python_backend() {
+  stop_service "Python backend" "$PY_BACKEND_PID_FILE" "$PY_BACKEND_PORT"
+}
+
+status_python_backend() {
+  local pid
+  if pid="$(service_running_pid "$PY_BACKEND_PID_FILE" "$PY_BACKEND_PORT")"; then
+    log "Python backend: running on http://$PY_BACKEND_HOST:$PY_BACKEND_PORT (pid $pid)"
+  else
+    log "Python backend: stopped"
   fi
 }
 
@@ -178,7 +258,8 @@ start_frontend() {
   # Frontend reads pre-built static JSON from /data — no backend needed.
   (
     cd "$APP_DIR"
-    nohup npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
+    nohup env VITE_API_BASE_URL="${VITE_API_BASE_URL:-}" \
+      npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
       < /dev/null > "$FRONTEND_LOG_FILE" 2>&1 &
     echo $!
   ) > "$RUN_DIR/.frontend.pid.tmp"
@@ -227,12 +308,24 @@ start_with_backend() {
   log "  日志: $LOG_DIR/"
 }
 
+start_with_python_backend() {
+  start_python_backend
+  VITE_API_BASE_URL="${VITE_API_BASE_URL:-http://$PY_BACKEND_HOST:$PY_BACKEND_PORT}" start_frontend
+  log ""
+  log "经史舆图 启动完成（前端 + Python 内容后端）"
+  log "  前端: http://$FRONTEND_HOST:$FRONTEND_PORT"
+  log "  Python 后端: http://$PY_BACKEND_HOST:$PY_BACKEND_PORT/api"
+  log "  日志: $LOG_DIR/"
+}
+
 stop_all() {
   stop_frontend || true
+  stop_python_backend || true
   stop_backend || true
 }
 
 status_all() {
+  status_python_backend
   status_backend
   status_frontend
 }
@@ -246,15 +339,21 @@ Commands:
                         now reads pre-built static JSON and no longer needs
                         the Express backend.
   start-with-backend    Start both frontend and the legacy Express backend.
+  start-with-python     Start Python content backend and frontend configured
+                        to read it, with static JSON fallback in the frontend.
   stop                  Stop both (frontend + backend if running).
   restart               Stop both, then run 'start' (frontend only).
   restart-with-backend  Stop both, then run 'start-with-backend'.
+  restart-with-python   Stop all, then run 'start-with-python'.
   status                Show running state of both.
   start-backend         Start only the backend.
+  start-python-backend  Start only the Python content backend.
   start-frontend        Start only the frontend.
   stop-backend          Stop only the backend.
+  stop-python-backend   Stop only the Python content backend.
   stop-frontend         Stop only the frontend.
-  logs [be|fe]          Tail backend (be) or frontend (fe) log; defaults to both.
+  logs [be|py|fe]       Tail backend (be), Python backend (py), or frontend (fe);
+                        defaults to all.
   help                  Show this message.
 
 Environment overrides:
@@ -262,6 +361,10 @@ Environment overrides:
   FRONTEND_PORT  default: 5174
   BACKEND_HOST   default: 127.0.0.1
   BACKEND_PORT   default: 4000
+  PY_BACKEND_HOST default: 127.0.0.1
+  PY_BACKEND_PORT default: 8000
+  PY_BACKEND_DB_URL default: sqlite:///backend/.data/content.db
+  VITE_API_BASE_URL default: empty for static-only frontend
 USAGE
 }
 
@@ -271,11 +374,14 @@ tail_logs() {
     be|backend)
       tail -F "$BACKEND_LOG_FILE"
       ;;
+    py|python)
+      tail -F "$PY_BACKEND_LOG_FILE"
+      ;;
     fe|frontend)
       tail -F "$FRONTEND_LOG_FILE"
       ;;
     both|*)
-      tail -F "$BACKEND_LOG_FILE" "$FRONTEND_LOG_FILE"
+      tail -F "$PY_BACKEND_LOG_FILE" "$BACKEND_LOG_FILE" "$FRONTEND_LOG_FILE"
       ;;
   esac
 }
@@ -286,6 +392,9 @@ case "${1:-start}" in
     ;;
   start-with-backend)
     start_with_backend
+    ;;
+  start-with-python)
+    start_with_python_backend
     ;;
   stop)
     stop_all
@@ -298,17 +407,27 @@ case "${1:-start}" in
     stop_all
     start_with_backend
     ;;
+  restart-with-python)
+    stop_all
+    start_with_python_backend
+    ;;
   status)
     status_all
     ;;
   start-backend)
     start_backend
     ;;
+  start-python-backend)
+    start_python_backend
+    ;;
   start-frontend)
     start_frontend
     ;;
   stop-backend)
     stop_backend
+    ;;
+  stop-python-backend)
+    stop_python_backend
     ;;
   stop-frontend)
     stop_frontend

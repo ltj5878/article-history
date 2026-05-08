@@ -2,7 +2,7 @@
 
 > 古文与历史地图相融的阅读系统 —— 边读《左传》《史记》原文，边在专业历史地图上看人物走动、疆界变迁。
 
-![status](https://img.shields.io/badge/status-active-brightgreen) ![stack](https://img.shields.io/badge/stack-React%20%2B%20Express%20%2B%20MapLibre-blue)
+![status](https://img.shields.io/badge/status-active-brightgreen) ![stack](https://img.shields.io/badge/stack-React%20%2B%20Python%20%2B%20Postgres%20ready%20%2B%20MapLibre-blue)
 
 ## 功能概览
 
@@ -25,8 +25,10 @@
 
 | 层 | 技术 |
 |---|---|
-| 前端 | React 18 + Vite + MapLibre GL JS |
-| 后端 | Node.js + Express |
+| 前端 | React + Vite + MapLibre GL JS |
+| 后端 | Python + FastAPI（内容 API，Postgres-ready；本地可用 SQLite） |
+| 旧后端 | Node.js + Express（兼容旧接口，后续退场） |
+| 数据库 | Postgres / Supabase-ready（本地过渡支持 SQLite） |
 | 地图样式 | 自定义 MapLibre Style Spec（古风宣纸 / 墨线 / 青绿水系） |
 | 地理数据 | Natural Earth 1:50m（裁剪到中国 bbox） |
 | 字体 | Noto Serif SC、Ma Shan Zheng（行楷）、ZCOOL XiaoWei、JetBrains Mono |
@@ -64,6 +66,13 @@
 │       ├── ne_lakes_china.geojson
 │       ├── ne_land_china.geojson
 │       └── china_provinces.geojson
+├── backend/               # Python 内容后端 (FastAPI + SQLAlchemy)
+│   ├── api/
+│   │   ├── app.py         # FastAPI 路由
+│   │   ├── repository.py  # 经史内容数据 Module
+│   │   ├── models.py      # Postgres-ready 数据模型
+│   │   └── seed.py        # 从静态 JSON 导入数据库
+│   └── tests/
 ├── start.sh               # 一键启动脚本（前后端）
 ├── design-system/         # 原始设计稿 + 设计 token
 └── README.md              # 本文件
@@ -78,13 +87,19 @@
 
 ### 启动
 
-项目目前以纯前端模式运行——所有数据由 `app/scripts/build-data.mjs` 在
-`npm run dev` 之前预生成成静态 JSON，前端直接 fetch，**不再需要后端**。
+项目保留纯前端静态模式，同时新增 Python 内容后端。默认 `./start.sh start`
+仍只启动前端并读取静态 JSON；需要验证数据库驱动的数据路径时，使用
+`./start.sh start-with-python`。
 
 ```bash
 # 默认：只启前端（纯静态数据）
 ./start.sh start
 #   前端: http://127.0.0.1:5174
+
+# 前端 + Python 内容后端（前端优先读 API，失败时 fallback 到静态 JSON）
+./start.sh start-with-python
+#   前端: http://127.0.0.1:5174
+#   后端: http://127.0.0.1:8000/api
 
 # 兼容旧用法：同时启动 Express 后端（一般不需要）
 ./start.sh start-with-backend
@@ -99,6 +114,7 @@
 ./start.sh restart                 # 重启（前端模式）
 ./start.sh restart-with-backend    # 重启（前端 + 后端）
 ./start.sh status                  # 查看运行状态
+./start.sh start-python-backend    # 只启 Python 内容后端
 ./start.sh start-backend           # 只启后端
 ./start.sh start-frontend          # 只启前端
 ./start.sh logs                    # 实时查看日志
@@ -108,8 +124,32 @@
 ### 自定义端口
 
 ```bash
-FRONTEND_PORT=5180 BACKEND_PORT=4001 ./start.sh start
+FRONTEND_PORT=5180 PY_BACKEND_PORT=8001 ./start.sh start-with-python
 ```
+
+### Python 内容后端
+
+Python 后端从当前生成的静态数据导入数据库，接口保持和前端现有读取形状一致。
+
+```bash
+# 安装依赖（start.sh 会自动做；手动执行也可以）
+python3 -m venv backend/.venv
+backend/.venv/bin/python -m pip install -r backend/requirements.txt
+
+# 生成静态 seed 数据
+cd app && npm run build:data && cd ..
+
+# 导入本地 SQLite 数据库
+PYTHONPATH=backend backend/.venv/bin/python -m api.seed \
+  --db-url sqlite:///backend/.data/content.db \
+  --data-dir app/public/data
+
+# 启动 API
+PYTHONPATH=backend DATABASE_URL=sqlite:///backend/.data/content.db \
+  backend/.venv/bin/python -m uvicorn api.app:app --host 127.0.0.1 --port 8000
+```
+
+上线时可将 `DATABASE_URL` 指向 Postgres/Supabase。当前阶段还没有登录注册和管理员 UI；这两块会在内容数据 Module 稳定后继续接入。
 
 ## 部署到 Vercel / Netlify（纯静态）
 

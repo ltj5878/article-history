@@ -10,6 +10,7 @@
     "prebuild": "node scripts/build-data.mjs",
     "build": "vite build",
     "lint": "eslint .",
+    "test": "node --test scripts/build-data.test.mjs src/api/client.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
