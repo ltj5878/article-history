@@ -209,7 +209,7 @@
 .reader--vert .para__translation { display: none; }
 
 /* ============ Map ============ */
-.map { position: relative; height: 100%; background: var(--bg-2); overflow: hidden; user-select: none; }
+.map { position: relative; height: 100%; overflow: hidden; user-select: none; }
 .map__libre { width: 100%; height: 100%; }
 .map--loading { display: flex; align-items: center; justify-content: center; color: var(--fg-3); font-family: var(--font-display); font-size: 18px; }
 .map__loading-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg); z-index: 4; color: var(--fg-3); font-family: var(--font-display); font-size: 18px; }

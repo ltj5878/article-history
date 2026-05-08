@@ -181,12 +181,21 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
       }
       mapInstance.current = map;
       attachMapHandlers(map);
+
+      // Keep canvas sized to container — guards against grid-row reflow leaving
+      // a strip of empty space under the canvas after timeline height changes.
+      const ro = new ResizeObserver(() => {
+        try { map.resize(); } catch { /* noop */ }
+      });
+      ro.observe(container);
+      map.__ro = ro;
     };
     tryInit();
 
     return () => {
       mounted = false;
       const m = mapInstance.current;
+      if (m?.__ro) { try { m.__ro.disconnect(); } catch { /* noop */ } }
       // Clean up DOM markers first
       Object.values(markers.current).forEach(arr => arr.forEach(mk => mk.remove?.()));
       markers.current = { states: [], cities: [], pois: [], provinces: [] };

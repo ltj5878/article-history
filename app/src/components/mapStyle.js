@@ -46,7 +46,7 @@ export function buildMapStyle({ theme = 'classic' } = {}) {
             type: 'Feature',
             geometry: {
               type: 'Polygon',
-              coordinates: [[[60, 5], [150, 5], [150, 60], [60, 60], [60, 5]]],
+              coordinates: [[[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]]],
             },
           }],
         },
@@ -59,6 +59,9 @@ export function buildMapStyle({ theme = 'classic' } = {}) {
     },
     layers: [
       // ---------- Sea base (rice-paper bluish wash) ----------
+      // sea-bg polygon is intentionally huge so it covers the full canvas at any
+      // pan/zoom — prevents the container background from bleeding through as a
+      // colored band along edges.
       {
         id: 'sea-fill',
         type: 'fill',
