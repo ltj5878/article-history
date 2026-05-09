@@ -23,6 +23,7 @@ from .auth import (
     resolve_jwt_secret,
     to_user_response,
 )
+from .content_import import ContentImportError, ContentImportPackage, ContentPackageImporter
 from .database import get_database_url, init_db, session_scope
 from .repository import ContentNotFoundError, ContentRepository
 
@@ -49,7 +50,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=get_cors_origins(),
         allow_credentials=False,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
     )
     get_current_user, require_admin = auth_dependencies(resolved_db_url, jwt_secret)
@@ -153,6 +154,14 @@ def create_app(
             try:
                 return _or_404(lambda: AdminContentRepository(session).add_chapter(book_id, payload))
             except DuplicateContentError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/admin/import", status_code=201)
+    def admin_import_content(payload: ContentImportPackage, user=Depends(require_admin)):
+        with session_scope(resolved_db_url) as session:
+            try:
+                return ContentPackageImporter(session).import_package(payload)
+            except ContentImportError as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     return app

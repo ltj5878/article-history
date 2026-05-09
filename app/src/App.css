@@ -152,6 +152,14 @@
   background: rgba(196, 30, 36, 0.06);
   font-size: 12px;
 }
+.admin-panel__success {
+  padding: 8px 10px;
+  border: 1px solid rgba(82, 128, 88, 0.35);
+  border-radius: var(--r-2);
+  color: #385f3c;
+  background: rgba(82, 128, 88, 0.1);
+  font-size: 12px;
+}
 .admin-panel__body {
   min-height: 0;
   display: grid;
@@ -227,6 +235,12 @@
 }
 .admin-field input { height: 34px; }
 .admin-field textarea { min-height: 82px; resize: vertical; }
+.admin-form--import textarea {
+  min-height: 220px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+}
 .admin-form__actions { display: flex; gap: 8px; justify-content: flex-end; }
 .admin-form__actions button {
   height: 32px;

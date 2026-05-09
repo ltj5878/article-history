@@ -170,6 +170,7 @@ Python 后端提供基础身份接口：
 
 - 新增、编辑、删除书籍元数据
 - 为指定书籍新增基础章节
+- 粘贴 JSON 内容包批量导入古籍
 - 保存后刷新公开阅读入口中的书籍和章节列表
 
 管理员接口统一要求 Bearer token 且用户角色为 `admin`：
@@ -181,8 +182,45 @@ Python 后端提供基础身份接口：
 | PATCH | `/api/admin/books/:bookId` | 更新书籍 |
 | DELETE | `/api/admin/books/:bookId` | 删除书籍及其关联内容 |
 | POST | `/api/admin/books/:bookId/chapters` | 新增基础章节 |
+| POST | `/api/admin/import` | 导入 JSON 内容包 |
 
-当前章节维护是第一版后台能力：可以录入章节标题、年份、时期、原文和译文，实体标注、路线、文章级结构和批量导入会在后续重构切片继续加深。
+内容包按书籍维度 upsert：导入某本书会更新该书元数据并替换该书旧章节/文章，不会清空其他古籍、用户、时期或地理数据。当前数据库模型仍要求 reading unit ID 全局唯一，所以建议用 `book-id + chapter-id` 形式命名章节/文章 ID。
+
+```json
+{
+  "books": [
+    {
+      "id": "guoyu",
+      "title": "国语",
+      "bookSeries": "国别体",
+      "dynasty": "春秋",
+      "author": "左丘明",
+      "description": "春秋国别史料汇编",
+      "eraEvents": [],
+      "chapters": [
+        {
+          "id": "guoyu-zhouyu",
+          "title": "周语",
+          "subtitle": "敬王问治",
+          "year": -520,
+          "period": "spring_autumn_late",
+          "paragraphs": [
+            {
+              "id": "p1",
+              "original": "敬王问于史伯。",
+              "translation": "周敬王向史伯询问政事。",
+              "entities": [],
+              "routes": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+当前章节维护是第一版后台能力：可以录入章节标题、年份、时期、原文和译文，也可以导入完整 JSON 内容包。实体标注、路线、文章级结构的可视化编辑和数据库主键迁移会在后续重构切片继续加深。
 
 ## 部署到 Vercel / Netlify（纯静态）
 

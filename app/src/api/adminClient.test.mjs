@@ -39,6 +39,24 @@ test('admin client creates books and chapters with JSON payloads', async () => {
   assert.equal(JSON.parse(calls[1][1].body).original, '敬王问于史伯。');
 });
 
+test('admin client imports content packages', async () => {
+  const calls = [];
+  const client = createAdminClient({
+    apiBaseUrl: 'https://api.example.com',
+    getToken: () => 'token-admin',
+    fetchImpl: async (url, options) => {
+      calls.push([url, options]);
+      return jsonResponse({ booksImported: 1, readingUnitsImported: 2 });
+    },
+  });
+  const payload = { books: [{ id: 'guoyu', title: '国语', chapters: [] }] };
+
+  assert.deepEqual(await client.importPackage(payload), { booksImported: 1, readingUnitsImported: 2 });
+  assert.equal(calls[0][0], 'https://api.example.com/api/admin/import');
+  assert.equal(calls[0][1].method, 'POST');
+  assert.deepEqual(JSON.parse(calls[0][1].body), payload);
+});
+
 test('admin client surfaces backend errors', async () => {
   const client = createAdminClient({
     apiBaseUrl: 'https://api.example.com',

@@ -31,5 +31,6 @@ export function createAdminClient({
     updateBook: (bookId, payload) => request(`/api/admin/books/${bookId}`, { method: 'PATCH', body: payload }),
     deleteBook: (bookId) => request(`/api/admin/books/${bookId}`, { method: 'DELETE' }),
     addChapter: (bookId, payload) => request(`/api/admin/books/${bookId}/chapters`, { method: 'POST', body: payload }),
+    importPackage: (payload) => request('/api/admin/import', { method: 'POST', body: payload }),
   };
 }

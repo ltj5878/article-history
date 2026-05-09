@@ -2,12 +2,45 @@ import { useEffect, useState } from 'react';
 
 const emptyBook = { id: '', title: '', bookSeries: '', dynasty: '', author: '', description: '' };
 const emptyChapter = { id: '', title: '', subtitle: '', year: '', period: '', original: '', translation: '' };
+const importTemplate = JSON.stringify({
+  books: [
+    {
+      id: 'guoyu',
+      title: '国语',
+      bookSeries: '国别体',
+      dynasty: '春秋',
+      author: '左丘明',
+      description: '春秋国别史料汇编',
+      eraEvents: [],
+      chapters: [
+        {
+          id: 'guoyu-zhouyu',
+          title: '周语',
+          subtitle: '敬王问治',
+          year: -520,
+          period: 'spring_autumn_late',
+          paragraphs: [
+            {
+              id: 'p1',
+              original: '敬王问于史伯。',
+              translation: '周敬王向史伯询问政事。',
+              entities: [],
+              routes: [],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+}, null, 2);
 
 export default function AdminPanel({ adminClient, onClose, onChanged }) {
   const [books, setBooks] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [bookForm, setBookForm] = useState(emptyBook);
   const [chapterForm, setChapterForm] = useState(emptyChapter);
+  const [importText, setImportText] = useState(importTemplate);
+  const [importStatus, setImportStatus] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -41,6 +74,7 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
     event.preventDefault();
     setBusy(true);
     setError('');
+    setImportStatus('');
     try {
       const payload = cleanBookPayload(bookForm);
       if (selectedBook?.id === bookForm.id) {
@@ -61,6 +95,7 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
     if (!selectedBook) return;
     setBusy(true);
     setError('');
+    setImportStatus('');
     try {
       await adminClient.deleteBook(selectedBook.id);
       await loadBooks('');
@@ -77,6 +112,7 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
     if (!selectedBook) return;
     setBusy(true);
     setError('');
+    setImportStatus('');
     try {
       await adminClient.addChapter(selectedBook.id, cleanChapterPayload(chapterForm));
       setChapterForm(emptyChapter);
@@ -84,6 +120,24 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
       onChanged?.();
     } catch (err) {
       setError(err?.message || '新增章节失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitImport(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    setImportStatus('');
+    try {
+      const payload = JSON.parse(importText);
+      const result = await adminClient.importPackage(payload);
+      await loadBooks(payload.books?.[0]?.id || selectedId);
+      onChanged?.();
+      setImportStatus(`已导入 ${result.booksImported} 本古籍，${result.readingUnitsImported} 篇内容`);
+    } catch (err) {
+      setError(err instanceof SyntaxError ? '内容包 JSON 格式错误' : (err?.message || '导入内容包失败'));
     } finally {
       setBusy(false);
     }
@@ -153,6 +207,15 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
               </div>
             </form>
           )}
+
+          <form className="admin-form admin-form--import" onSubmit={submitImport}>
+            <h3>导入内容包</h3>
+            {importStatus && <div className="admin-panel__success">{importStatus}</div>}
+            <TextField label="内容包 JSON" value={importText} onChange={setImportText} required />
+            <div className="admin-form__actions">
+              <button type="submit" disabled={busy}>导入内容包</button>
+            </div>
+          </form>
         </div>
       </div>
     </div>

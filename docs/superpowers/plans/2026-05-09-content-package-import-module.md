@@ -23,31 +23,31 @@
 
 ## Task 1: Backend Import Interface
 
-- [ ] Write failing tests for admin import, re-import replace behavior, cross-book unit ID collision, and regular-user rejection.
-- [ ] Implement content package Pydantic models.
-- [ ] Implement importer repository that upserts books and replaces only imported books' reading units.
-- [ ] Add `POST /api/admin/import`.
-- [ ] Run backend import, admin, auth, and content tests; expect PASS.
+- [x] Write failing tests for admin import, re-import replace behavior, cross-book unit ID collision, and regular-user rejection.
+- [x] Implement content package Pydantic models.
+- [x] Implement importer repository that upserts books and replaces only imported books' reading units.
+- [x] Add `POST /api/admin/import`.
+- [x] Run backend import, admin, auth, and content tests; expect PASS.
 
 ## Task 2: Frontend Adapter
 
-- [ ] Add failing admin client test for `importPackage`.
-- [ ] Implement `adminClient.importPackage`.
-- [ ] Run frontend API tests; expect PASS.
+- [x] Add failing admin client test for `importPackage`.
+- [x] Implement `adminClient.importPackage`.
+- [x] Run frontend API tests; expect PASS.
 
 ## Task 3: Admin UI
 
-- [ ] Add JSON textarea import form to `AdminPanel`.
-- [ ] Parse JSON locally and surface parse errors before calling the backend.
-- [ ] Refresh admin/public content after successful import.
-- [ ] Run frontend tests and production build; expect PASS.
+- [x] Add JSON textarea import form to `AdminPanel`.
+- [x] Parse JSON locally and surface parse errors before calling the backend.
+- [x] Refresh admin/public content after successful import.
+- [x] Run frontend tests and production build; expect PASS.
 
 ## Task 4: Docs and Verification
 
-- [ ] Update README with package example and current import limits.
-- [ ] Run backend tests.
-- [ ] Run frontend tests.
-- [ ] Run frontend build.
-- [ ] Run `bash -n ./start.sh`.
-- [ ] Use Playwright snapshot to check the admin import form.
-- [ ] Commit with `feat: add content package import`.
+- [x] Update README with package example and current import limits.
+- [x] Run backend tests.
+- [x] Run frontend tests.
+- [x] Run frontend build.
+- [x] Run `bash -n ./start.sh`.
+- [x] Use Playwright snapshot to check the admin import form.
+- [x] Commit with `feat: add content package import`.
