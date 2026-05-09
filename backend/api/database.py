@@ -16,7 +16,10 @@ DEFAULT_DATABASE_URL = "sqlite:///backend/.data/content.db"
 
 
 def get_database_url(db_url: str | None = None) -> str:
-    return db_url or os.environ.get("DATABASE_URL") or DEFAULT_DATABASE_URL
+    resolved = db_url or os.environ.get("DATABASE_URL") or DEFAULT_DATABASE_URL
+    if resolved.startswith("postgres://"):
+        return "postgresql+psycopg://" + resolved.removeprefix("postgres://")
+    return resolved
 
 
 def make_engine(db_url: str | None = None) -> Engine:

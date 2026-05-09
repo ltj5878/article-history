@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, inspect, text
 
-from api.database import init_db, session_scope
+from api.database import get_database_url, init_db, session_scope
 from api.models import Book, ReadingUnit
 
 
@@ -88,3 +88,7 @@ def test_legacy_sqlite_reading_units_table_is_migrated(tmp_path):
             )
         )
         assert len(session.query(ReadingUnit).filter(ReadingUnit.id == "intro").all()) == 2
+
+
+def test_render_postgres_url_uses_psycopg_driver():
+    assert get_database_url("postgres://user:pass@host:5432/db") == "postgresql+psycopg://user:pass@host:5432/db"
