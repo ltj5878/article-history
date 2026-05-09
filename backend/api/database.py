@@ -19,6 +19,8 @@ def get_database_url(db_url: str | None = None) -> str:
     resolved = db_url or os.environ.get("DATABASE_URL") or DEFAULT_DATABASE_URL
     if resolved.startswith("postgres://"):
         return "postgresql+psycopg://" + resolved.removeprefix("postgres://")
+    if resolved.startswith("postgresql://"):
+        return "postgresql+psycopg://" + resolved.removeprefix("postgresql://")
     return resolved
 
 
