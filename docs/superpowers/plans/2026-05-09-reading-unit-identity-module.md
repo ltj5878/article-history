@@ -25,29 +25,29 @@
 
 ## Task 1: Schema Model and Migration
 
-- [ ] Write failing tests for fresh schema and legacy SQLite migration.
-- [ ] Add `ReadingUnit.pk` and unique `(book_id, id)`.
-- [ ] Implement SQLite migration for legacy `reading_units`.
-- [ ] Run schema tests; expect PASS.
+- [x] Write failing tests for fresh schema and legacy SQLite migration.
+- [x] Add `ReadingUnit.pk` and unique `(book_id, id)`.
+- [x] Implement SQLite migration for legacy `reading_units`.
+- [x] Run schema tests; expect PASS.
 
 ## Task 2: Repository Semantics
 
-- [ ] Add failing admin test: two books can each add chapter ID `intro`.
-- [ ] Update admin duplicate check to be book-scoped.
-- [ ] Run admin/content tests; expect PASS.
+- [x] Add failing admin test: two books can each add chapter ID `intro`.
+- [x] Update admin duplicate check to be book-scoped.
+- [x] Run admin/content tests; expect PASS.
 
 ## Task 3: Import Semantics
 
-- [ ] Change import collision test to allow same unit ID across different books.
-- [ ] Keep duplicate unit IDs within the same book rejected.
-- [ ] Update importer validation.
-- [ ] Run import tests; expect PASS.
+- [x] Change import collision test to allow same unit ID across different books.
+- [x] Keep duplicate unit IDs within the same book rejected.
+- [x] Update importer validation.
+- [x] Run import tests; expect PASS.
 
 ## Task 4: Docs and Verification
 
-- [ ] Update README with book-scoped reading unit IDs.
-- [ ] Run backend tests.
-- [ ] Run frontend tests.
-- [ ] Run frontend build.
-- [ ] Run `bash -n ./start.sh`.
-- [ ] Commit with `feat: scope reading unit identity by book`.
+- [x] Update README with book-scoped reading unit IDs.
+- [x] Run backend tests.
+- [x] Run frontend tests.
+- [x] Run frontend build.
+- [x] Run `bash -n ./start.sh`.
+- [x] Commit with `feat: scope reading unit identity by book`.

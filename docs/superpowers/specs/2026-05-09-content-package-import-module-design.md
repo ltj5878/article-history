@@ -20,7 +20,7 @@ Add an administrator-only content package import Module so 经史舆图 can grow
 - Entity and route visual editors.
 - File uploads and attachment storage.
 - Automatic OCR, NLP annotation, or translation.
-- Database migrations for changing `ReadingUnit.id` away from a global primary key.
+- Database migrations for changing `ReadingUnit.id` away from a global primary key. This was handled later by the Reading Unit Identity Module.
 
 ## Backend Interface
 
@@ -77,7 +77,7 @@ The importer returns counts:
 
 - A package must contain at least one book.
 - A book can contain chapters, articles, or both.
-- Reading unit IDs must be unique within the package and must not collide with existing units belonging to another book. This matches the current database model where `ReadingUnit.id` is still globally unique.
+- Reading unit IDs must be unique within each book. Different books can reuse the same reading unit ID.
 - Re-importing the same book replaces that book's previous reading units atomically.
 - Imported documents keep the frontend-compatible shape already returned by public reader endpoints.
 

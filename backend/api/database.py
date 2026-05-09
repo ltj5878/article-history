@@ -9,6 +9,7 @@ from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import Session
 
 from .models import Base
+from .schema import migrate_schema
 
 
 DEFAULT_DATABASE_URL = "sqlite:///backend/.data/content.db"
@@ -31,6 +32,7 @@ def make_engine(db_url: str | None = None) -> Engine:
 def init_db(db_url: str | None = None) -> None:
     engine = make_engine(db_url)
     Base.metadata.create_all(engine)
+    migrate_schema(engine)
 
 
 @contextmanager

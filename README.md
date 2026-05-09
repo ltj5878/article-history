@@ -184,7 +184,7 @@ Python 后端提供基础身份接口：
 | POST | `/api/admin/books/:bookId/chapters` | 新增基础章节 |
 | POST | `/api/admin/import` | 导入 JSON 内容包 |
 
-内容包按书籍维度 upsert：导入某本书会更新该书元数据并替换该书旧章节/文章，不会清空其他古籍、用户、时期或地理数据。当前数据库模型仍要求 reading unit ID 全局唯一，所以建议用 `book-id + chapter-id` 形式命名章节/文章 ID。
+内容包按书籍维度 upsert：导入某本书会更新该书元数据并替换该书旧章节/文章，不会清空其他古籍、用户、时期或地理数据。章节/文章 ID 只需要在同一本书内唯一，不同古籍可以复用 `intro`、`preface` 等自然 ID。
 
 ```json
 {

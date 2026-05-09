@@ -71,16 +71,38 @@ def test_import_replaces_only_the_reimported_book(tmp_path):
     assert client.get("/api/books/mengzi/chapters/mengzi-lianghuiwang").status_code == 200
 
 
-def test_import_rejects_unit_id_collision_with_another_book(tmp_path):
+def test_import_allows_same_unit_id_across_books(tmp_path):
     client, db_url = admin_client(tmp_path)
     token = make_user(client, db_url, "admin@example.com", role="admin")
-    assert client.post("/api/admin/import", headers=auth_header(token), json=package_payload()).status_code == 201
 
-    collision = package_payload(book_id="mengzi", unit_id="guoyu-zhouyu", title="孟子")
-    response = client.post("/api/admin/import", headers=auth_header(token), json=collision)
+    response = client.post(
+        "/api/admin/import",
+        headers=auth_header(token),
+        json={
+            "books": [
+                package_payload(book_id="guoyu", unit_id="intro", title="国语")["books"][0],
+                package_payload(book_id="mengzi", unit_id="intro", title="孟子")["books"][0],
+            ]
+        },
+    )
+
+    assert response.status_code == 201
+    assert client.get("/api/books/guoyu/chapters/intro").status_code == 200
+    assert client.get("/api/books/mengzi/chapters/intro").status_code == 200
+
+
+def test_import_rejects_duplicate_unit_id_within_the_same_book(tmp_path):
+    client, db_url = admin_client(tmp_path)
+    token = make_user(client, db_url, "admin@example.com", role="admin")
+    payload = package_payload(unit_id="intro")
+    duplicate = package_payload(unit_id="intro")["books"][0]["chapters"][0]
+    duplicate["title"] = "重复导读"
+    payload["books"][0]["chapters"].append(duplicate)
+
+    response = client.post("/api/admin/import", headers=auth_header(token), json=payload)
 
     assert response.status_code == 409
-    assert "Reading unit id already belongs to another book" in response.json()["detail"]
+    assert "Duplicate reading unit ids in book" in response.json()["detail"]
 
 
 def test_regular_user_cannot_import_content_package(tmp_path):

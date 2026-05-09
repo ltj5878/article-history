@@ -1,6 +1,6 @@
 from datetime import datetime, UTC
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -28,8 +28,10 @@ class Book(Base):
 
 class ReadingUnit(Base):
     __tablename__ = "reading_units"
+    __table_args__ = (UniqueConstraint("book_id", "id", name="uq_reading_units_book_id_id"),)
 
-    id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    pk: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[str] = mapped_column(String(120), nullable=False)
     book_id: Mapped[str] = mapped_column(ForeignKey("books.id", ondelete="CASCADE"), nullable=False)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     title: Mapped[str] = mapped_column(String(240), nullable=False)

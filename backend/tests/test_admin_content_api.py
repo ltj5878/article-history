@@ -102,6 +102,30 @@ def test_admin_can_add_basic_chapter_to_book(tmp_path):
     assert public_chapter.json()["paragraphs"][0]["original"] == "敬王问于史伯。"
 
 
+def test_admin_can_reuse_chapter_id_across_books(tmp_path):
+    client, db_url = admin_client(tmp_path)
+    token = make_user(client, db_url, "admin@example.com", role="admin")
+    for book_id, title in [("guoyu", "国语"), ("mengzi", "孟子")]:
+        assert client.post("/api/admin/books", headers=auth_header(token), json={"id": book_id, "title": title}).status_code == 201
+
+    for book_id in ["guoyu", "mengzi"]:
+        created = client.post(
+            f"/api/admin/books/{book_id}/chapters",
+            headers=auth_header(token),
+            json={"id": "intro", "title": "导读", "original": f"{book_id} 导读。"},
+        )
+        assert created.status_code == 201
+
+    duplicate = client.post(
+        "/api/admin/books/guoyu/chapters",
+        headers=auth_header(token),
+        json={"id": "intro", "title": "重复导读", "original": "重复。"},
+    )
+    assert duplicate.status_code == 409
+    assert client.get("/api/books/guoyu/chapters/intro").json()["paragraphs"][0]["original"] == "guoyu 导读。"
+    assert client.get("/api/books/mengzi/chapters/intro").json()["paragraphs"][0]["original"] == "mengzi 导读。"
+
+
 def admin_client(tmp_path):
     db_url = f"sqlite:///{tmp_path / 'admin.db'}"
     init_db(db_url)

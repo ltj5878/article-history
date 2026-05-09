@@ -1,7 +1,7 @@
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -120,26 +120,18 @@ class ContentPackageImporter:
         )
 
     def _validate_reading_unit_ids(self, package: ContentImportPackage) -> None:
-        imported_book_ids = {book.id for book in package.books}
-        unit_ids: list[str] = []
+        book_ids = [book.id for book in package.books]
+        duplicate_book_ids = sorted({book_id for book_id in book_ids if book_ids.count(book_id) > 1})
+        if duplicate_book_ids:
+            raise ContentImportError(f"Duplicate book ids in package: {', '.join(duplicate_book_ids)}")
+
         for book in package.books:
-            unit_ids.extend(article.id for article in book.articles)
-            unit_ids.extend(chapter.id for chapter in book.chapters)
-
-        duplicate_ids = sorted({unit_id for unit_id in unit_ids if unit_ids.count(unit_id) > 1})
-        if duplicate_ids:
-            raise ContentImportError(f"Duplicate reading unit ids in package: {', '.join(duplicate_ids)}")
-
-        if not unit_ids:
-            return
-        conflict = self.session.scalar(
-            select(ReadingUnit).where(
-                ReadingUnit.id.in_(unit_ids),
-                ReadingUnit.book_id.notin_(imported_book_ids),
-            )
-        )
-        if conflict:
-            raise ContentImportError(f"Reading unit id already belongs to another book: {conflict.id}")
+            unit_ids = [article.id for article in book.articles] + [chapter.id for chapter in book.chapters]
+            duplicate_unit_ids = sorted({unit_id for unit_id in unit_ids if unit_ids.count(unit_id) > 1})
+            if duplicate_unit_ids:
+                raise ContentImportError(
+                    f"Duplicate reading unit ids in book {book.id}: {', '.join(duplicate_unit_ids)}"
+                )
 
     def _article_unit(self, book_id: str, article: ArticlePackage, position: int) -> ReadingUnit:
         document = article.model_dump(by_alias=True, exclude_none=True)

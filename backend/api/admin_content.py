@@ -97,7 +97,13 @@ class AdminContentRepository:
         book = self.session.get(Book, book_id)
         if not book:
             raise ContentNotFoundError(f"Book not found: {book_id}")
-        existing = self.session.get(ReadingUnit, payload.id)
+        existing = self.session.scalar(
+            select(ReadingUnit).where(
+                ReadingUnit.book_id == book_id,
+                ReadingUnit.id == payload.id,
+                ReadingUnit.kind == "chapter",
+            )
+        )
         if existing:
             raise DuplicateContentError("Chapter already exists")
         position = len([unit for unit in book.reading_units if unit.kind == "chapter"])
