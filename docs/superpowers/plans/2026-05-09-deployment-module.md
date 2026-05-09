@@ -22,28 +22,28 @@
 
 ## Task 1: Backend Readiness Module
 
-- [ ] Write failing tests for default-not-ready and production-ready environment reports.
-- [ ] Implement `deployment_report` and `deployment_is_ready`.
-- [ ] Run deployment tests; expect PASS.
+- [x] Write failing tests for default-not-ready and production-ready environment reports.
+- [x] Implement `deployment_report` and `deployment_is_ready`.
+- [x] Run deployment tests; expect PASS.
 
 ## Task 2: Route and CLI
 
-- [ ] Add failing tests for `/api/deployment/readiness` and `python -m api.deploy_check`.
-- [ ] Implement readiness route and CLI.
-- [ ] Run deployment tests; expect PASS.
+- [x] Add failing tests for `/api/deployment/readiness` and `python -m api.deploy_check`.
+- [x] Implement readiness route and CLI.
+- [x] Run deployment tests; expect PASS.
 
 ## Task 3: Frontend/Local Integration
 
-- [ ] Add Netlify build environment and static security/cache headers.
-- [ ] Add `./start.sh check-deploy`.
-- [ ] Update README with frontend and backend deployment variables.
+- [x] Add Netlify build environment and static security/cache headers.
+- [x] Add `./start.sh check-deploy`.
+- [x] Update README with frontend and backend deployment variables.
 
 ## Task 4: Verification
 
-- [ ] Run backend tests.
-- [ ] Run frontend tests.
-- [ ] Run frontend build.
-- [ ] Run `bash -n ./start.sh`.
-- [ ] Run `PYTHONPATH=backend backend/.venv/bin/python -m api.deploy_check` and confirm it fails on local dev defaults.
-- [ ] Run the same check with production-like env and confirm it passes.
-- [ ] Commit with `feat: add deployment readiness module`.
+- [x] Run backend tests.
+- [x] Run frontend tests.
+- [x] Run frontend build.
+- [x] Run `bash -n ./start.sh`.
+- [x] Run `PYTHONPATH=backend backend/.venv/bin/python -m api.deploy_check` and confirm it fails on local dev defaults.
+- [x] Run the same check with production-like env and confirm it passes.
+- [x] Commit with `feat: add deployment readiness module`.

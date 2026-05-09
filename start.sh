@@ -234,6 +234,11 @@ status_python_backend() {
   fi
 }
 
+check_deploy() {
+  install_python_backend_deps
+  PYTHONPATH="$PY_BACKEND_DIR" "$PYTHON_BIN" -m api.deploy_check
+}
+
 # === Frontend ===
 
 install_frontend_deps() {
@@ -354,6 +359,7 @@ Commands:
   stop-backend          Stop only the backend.
   stop-python-backend   Stop only the Python content backend.
   stop-frontend         Stop only the frontend.
+  check-deploy          Check deployment-critical backend environment variables.
   logs [be|py|fe]       Tail backend (be), Python backend (py), or frontend (fe);
                         defaults to all.
   help                  Show this message.
@@ -434,6 +440,9 @@ case "${1:-start}" in
     ;;
   stop-frontend)
     stop_frontend
+    ;;
+  check-deploy)
+    check_deploy
     ;;
   logs)
     tail_logs "${2:-both}"

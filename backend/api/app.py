@@ -25,6 +25,7 @@ from .auth import (
 )
 from .content_import import ContentImportError, ContentImportPackage, ContentPackageImporter
 from .database import get_database_url, init_db, session_scope
+from .deployment import deployment_report
 from .repository import ContentNotFoundError, ContentRepository
 
 ALLOWED_GEO_LAYERS = {
@@ -59,6 +60,10 @@ def create_app(
     def health():
         with session_scope(resolved_db_url) as session:
             return ContentRepository(session).health()
+
+    @app.get("/api/deployment/readiness")
+    def deployment_readiness():
+        return deployment_report()
 
     @app.get("/api/books")
     def list_books():

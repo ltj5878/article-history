@@ -222,11 +222,9 @@ Python 后端提供基础身份接口：
 
 当前章节维护是第一版后台能力：可以录入章节标题、年份、时期、原文和译文，也可以导入完整 JSON 内容包。实体标注、路线、文章级结构的可视化编辑和数据库主键迁移会在后续重构切片继续加深。
 
-## 部署到 Vercel / Netlify（纯静态）
+## 部署到 Netlify + Python 后端
 
-项目可作为纯静态站点部署，无需后端。原 `server/data` 中的书籍/时期/地理数据会在
-构建时由 `app/scripts/build-data.mjs` 序列化为 JSON 文件输出到 `app/public/data/`，
-前端运行时直接 fetch 这些文件，构建产物即可托管到任意 CDN。
+项目仍可作为纯静态站点部署，也可以作为完整前后端系统部署。完整部署时，Netlify 只托管 React/Vite 前端，Python FastAPI 后端部署在单独的 Python 托管平台，数据库使用 Postgres/Supabase。
 
 ### 本地试构建
 
@@ -237,14 +235,40 @@ npm run build      # 自动跑 prebuild 生成 public/data/，再 vite build
 npm run preview    # 本地预览静态产物，访问 http://localhost:4173
 ```
 
-### Vercel
-
-仓库根目录已包含 `vercel.json`。在 Vercel 导入仓库后无需任何额外设置，使用默认部署即可。
-
 ### Netlify
 
-仓库根目录已包含 `netlify.toml`（`base = "app"`，`publish = "dist"`，含 SPA fallback）。
-导入仓库后默认设置即可部署。
+仓库根目录已包含 `netlify.toml`（`base = "app"`，`publish = "dist"`，含 SPA fallback、静态安全 header 和 assets 长缓存）。导入仓库后设置前端环境变量：
+
+| 变量 | 说明 |
+|---|---|
+| `VITE_API_BASE_URL` | Python 后端公开 origin，例如 `https://api.example.com`。留空则走纯静态 JSON fallback。 |
+
+### Python 后端
+
+后端部署命令：
+
+```bash
+cd backend
+PYTHONPATH=. uvicorn api.app:app --host 0.0.0.0 --port "$PORT"
+```
+
+后端生产环境变量：
+
+| 变量 | 说明 |
+|---|---|
+| `DATABASE_URL` | Postgres/Supabase 连接串，不能使用本地 SQLite。 |
+| `JWT_SECRET` | 至少 24 字符的强随机密钥，不能使用 `dev-only-change-me`。 |
+| `CORS_ORIGINS` | 允许访问后端的前端 origin，多个用逗号分隔。 |
+
+上线前可运行部署检查：
+
+```bash
+./start.sh check-deploy
+# 或
+PYTHONPATH=backend backend/.venv/bin/python -m api.deploy_check
+```
+
+接口 `/api/deployment/readiness` 会返回同样的结构化检查结果，但不会返回密钥值。
 
 > 注意：`app/public/data/` 是生成产物，已加入 `.gitignore`。本地开发执行
 > `npm run dev` 时会自动通过 `predev` 脚本生成。
@@ -254,6 +278,7 @@ npm run preview    # 本地预览静态产物，访问 http://localhost:4173
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/health` | 健康检查 |
+| GET | `/api/deployment/readiness` | 部署环境变量就绪检查 |
 | GET | `/api/books` | 列出全部书籍 |
 | GET | `/api/books/:id` | 单本书的元数据 + 文章/章节列表 + 时间事件 |
 | GET | `/api/books/:bookId/chapters/:chapterId` | 单章完整内容（原文/译文/entity/路线） |
