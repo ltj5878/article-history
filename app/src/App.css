@@ -224,6 +224,7 @@
 }
 .admin-field--wide { grid-column: 1 / -1; }
 .admin-field input,
+.admin-field select,
 .admin-field textarea {
   border: 1px solid var(--border);
   border-radius: var(--r-2);
@@ -234,7 +235,14 @@
   padding: 8px 9px;
 }
 .admin-field input { height: 34px; }
+.admin-field select { height: 34px; }
 .admin-field textarea { min-height: 82px; resize: vertical; }
+.admin-form--document textarea {
+  min-height: 260px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+}
 .admin-form--import textarea {
   min-height: 220px;
   font-family: var(--font-mono);

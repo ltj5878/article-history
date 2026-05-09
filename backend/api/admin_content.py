@@ -1,10 +1,12 @@
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .models import Book, ReadingUnit
-from .repository import ContentNotFoundError, encode_json
+from .repository import ContentNotFoundError, decode_json, encode_json
 
 
 class BookCreate(BaseModel):
@@ -47,7 +49,27 @@ class BookResponse(BaseModel):
     article_count: int = Field(alias="articleCount")
 
 
+class ReadingUnitResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    kind: str
+    title: str
+    subtitle: str | None = None
+    year: int | None = None
+    year_start: int | None = Field(default=None, alias="yearStart")
+    year_end: int | None = Field(default=None, alias="yearEnd")
+
+
+class ReadingDocumentUpdate(BaseModel):
+    document: dict[str, Any]
+
+
 class DuplicateContentError(ValueError):
+    pass
+
+
+class InvalidReadingDocumentError(ValueError):
     pass
 
 
@@ -139,6 +161,42 @@ class AdminContentRepository:
         self.session.flush()
         return document
 
+    def list_reading_units(self, book_id: str) -> list[ReadingUnitResponse]:
+        book = self.session.get(Book, book_id)
+        if not book:
+            raise ContentNotFoundError(f"Book not found: {book_id}")
+        return [self._unit_response(unit) for unit in book.reading_units]
+
+    def get_reading_document(self, book_id: str, kind: str, unit_id: str) -> dict:
+        unit = self._get_reading_unit(book_id, kind, unit_id)
+        return decode_json(unit.document_json)
+
+    def update_reading_document(self, book_id: str, kind: str, unit_id: str, payload: ReadingDocumentUpdate) -> dict:
+        document = payload.document
+        if document.get("id") != unit_id:
+            raise InvalidReadingDocumentError("document.id must match reading unit id")
+        unit = self._get_reading_unit(book_id, kind, unit_id)
+        unit.title = str(document.get("title") or unit.title)
+        unit.subtitle = document.get("subtitle")
+        unit.year = document.get("year") if kind == "chapter" else document.get("year")
+        unit.year_start = document.get("yearStart")
+        unit.year_end = document.get("yearEnd")
+        unit.document_json = encode_json(document)
+        self.session.flush()
+        return document
+
+    def _get_reading_unit(self, book_id: str, kind: str, unit_id: str) -> ReadingUnit:
+        unit = self.session.scalar(
+            select(ReadingUnit).where(
+                ReadingUnit.book_id == book_id,
+                ReadingUnit.kind == kind,
+                ReadingUnit.id == unit_id,
+            )
+        )
+        if not unit:
+            raise ContentNotFoundError(f"Reading unit not found: {book_id}/{kind}/{unit_id}")
+        return unit
+
     def _book_response(self, book: Book) -> BookResponse:
         return BookResponse(
             id=book.id,
@@ -149,4 +207,15 @@ class AdminContentRepository:
             description=book.description,
             chapterCount=sum(1 for unit in book.reading_units if unit.kind == "chapter"),
             articleCount=sum(1 for unit in book.reading_units if unit.kind == "article"),
+        )
+
+    def _unit_response(self, unit: ReadingUnit) -> ReadingUnitResponse:
+        return ReadingUnitResponse(
+            id=unit.id,
+            kind=unit.kind,
+            title=unit.title,
+            subtitle=unit.subtitle,
+            year=unit.year,
+            yearStart=unit.year_start,
+            yearEnd=unit.year_end,
         )

@@ -23,30 +23,30 @@
 
 ## Task 1: Backend Editor Interface
 
-- [ ] Write failing tests for list/get/update reading units, ID mismatch rejection, and regular user rejection.
-- [ ] Implement admin repository methods.
-- [ ] Add FastAPI routes.
-- [ ] Run backend admin tests; expect PASS.
+- [x] Write failing tests for list/get/update reading units, ID mismatch rejection, and regular user rejection.
+- [x] Implement admin repository methods.
+- [x] Add FastAPI routes.
+- [x] Run backend admin tests; expect PASS.
 
 ## Task 2: Frontend Adapter
 
-- [ ] Add failing admin client tests for list/get/update document calls.
-- [ ] Implement client methods.
-- [ ] Run frontend tests; expect PASS.
+- [x] Add failing admin client tests for list/get/update document calls.
+- [x] Implement client methods.
+- [x] Run frontend tests; expect PASS.
 
 ## Task 3: Admin UI
 
-- [ ] Add reading unit selector and JSON textarea to `AdminPanel`.
-- [ ] Parse JSON locally and surface parse errors before calling backend.
-- [ ] Refresh public data after save.
-- [ ] Run build; expect PASS.
+- [x] Add reading unit selector and JSON textarea to `AdminPanel`.
+- [x] Parse JSON locally and surface parse errors before calling backend.
+- [x] Refresh public data after save.
+- [x] Run build; expect PASS.
 
 ## Task 4: Docs and Verification
 
-- [ ] Update README with editor endpoints.
-- [ ] Run backend tests.
-- [ ] Run frontend tests.
-- [ ] Run frontend build.
-- [ ] Run `bash -n ./start.sh`.
-- [ ] Use Playwright snapshot to check the editor form.
-- [ ] Commit with `feat: add reading document editor`.
+- [x] Update README with editor endpoints.
+- [x] Run backend tests.
+- [x] Run frontend tests.
+- [x] Run frontend build.
+- [x] Run `bash -n ./start.sh`.
+- [x] Use Playwright snapshot to check the editor form.
+- [x] Commit with `feat: add reading document editor`.

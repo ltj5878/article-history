@@ -11,6 +11,8 @@ from .admin_content import (
     BookUpdate,
     ChapterCreate,
     DuplicateContentError,
+    InvalidReadingDocumentError,
+    ReadingDocumentUpdate,
 )
 from .auth import (
     AuthRepository,
@@ -51,7 +53,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=get_cors_origins(),
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
     )
     get_current_user, require_admin = auth_dependencies(resolved_db_url, jwt_secret)
@@ -159,6 +161,30 @@ def create_app(
             try:
                 return _or_404(lambda: AdminContentRepository(session).add_chapter(book_id, payload))
             except DuplicateContentError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/api/admin/books/{book_id}/units")
+    def admin_list_reading_units(book_id: str, user=Depends(require_admin)):
+        with session_scope(resolved_db_url) as session:
+            return _or_404(lambda: AdminContentRepository(session).list_reading_units(book_id))
+
+    @app.get("/api/admin/books/{book_id}/units/{kind}/{unit_id}")
+    def admin_get_reading_document(book_id: str, kind: str, unit_id: str, user=Depends(require_admin)):
+        with session_scope(resolved_db_url) as session:
+            return _or_404(lambda: AdminContentRepository(session).get_reading_document(book_id, kind, unit_id))
+
+    @app.put("/api/admin/books/{book_id}/units/{kind}/{unit_id}")
+    def admin_update_reading_document(
+        book_id: str,
+        kind: str,
+        unit_id: str,
+        payload: ReadingDocumentUpdate,
+        user=Depends(require_admin),
+    ):
+        with session_scope(resolved_db_url) as session:
+            try:
+                return _or_404(lambda: AdminContentRepository(session).update_reading_document(book_id, kind, unit_id, payload))
+            except InvalidReadingDocumentError as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/api/admin/import", status_code=201)

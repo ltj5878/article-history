@@ -57,6 +57,27 @@ test('admin client imports content packages', async () => {
   assert.deepEqual(JSON.parse(calls[0][1].body), payload);
 });
 
+test('admin client edits reading documents', async () => {
+  const calls = [];
+  const client = createAdminClient({
+    apiBaseUrl: 'https://api.example.com',
+    getToken: () => 'token-admin',
+    fetchImpl: async (url, options) => {
+      calls.push([url, options]);
+      return jsonResponse(url.endsWith('/units') ? [{ id: 'intro', kind: 'chapter' }] : { id: 'intro', title: '导读' });
+    },
+  });
+
+  assert.deepEqual(await client.listUnits('guoyu'), [{ id: 'intro', kind: 'chapter' }]);
+  assert.deepEqual(await client.getDocument('guoyu', 'chapter', 'intro'), { id: 'intro', title: '导读' });
+  await client.updateDocument('guoyu', 'chapter', 'intro', { id: 'intro', title: '修订' });
+
+  assert.equal(calls[0][0], 'https://api.example.com/api/admin/books/guoyu/units');
+  assert.equal(calls[1][0], 'https://api.example.com/api/admin/books/guoyu/units/chapter/intro');
+  assert.equal(calls[2][1].method, 'PUT');
+  assert.deepEqual(JSON.parse(calls[2][1].body), { document: { id: 'intro', title: '修订' } });
+});
+
 test('admin client surfaces backend errors', async () => {
   const client = createAdminClient({
     apiBaseUrl: 'https://api.example.com',

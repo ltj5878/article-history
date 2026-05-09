@@ -126,6 +126,73 @@ def test_admin_can_reuse_chapter_id_across_books(tmp_path):
     assert client.get("/api/books/mengzi/chapters/intro").json()["paragraphs"][0]["original"] == "mengzi 导读。"
 
 
+def test_admin_can_list_get_and_update_reading_document(tmp_path):
+    client, db_url = admin_client(tmp_path)
+    token = make_user(client, db_url, "admin@example.com", role="admin")
+    assert client.post("/api/admin/books", headers=auth_header(token), json={"id": "guoyu", "title": "国语"}).status_code == 201
+    assert client.post(
+        "/api/admin/books/guoyu/chapters",
+        headers=auth_header(token),
+        json={"id": "intro", "title": "导读", "original": "旧原文。"},
+    ).status_code == 201
+
+    listed = client.get("/api/admin/books/guoyu/units", headers=auth_header(token))
+    assert listed.status_code == 200
+    assert listed.json() == [
+        {"id": "intro", "kind": "chapter", "title": "导读", "subtitle": None, "year": None, "yearStart": None, "yearEnd": None}
+    ]
+
+    document = client.get("/api/admin/books/guoyu/units/chapter/intro", headers=auth_header(token))
+    assert document.status_code == 200
+    assert document.json()["paragraphs"][0]["original"] == "旧原文。"
+
+    updated_doc = document.json()
+    updated_doc["title"] = "导读修订"
+    updated_doc["year"] = -520
+    updated_doc["paragraphs"][0]["original"] = "新原文。"
+    updated = client.put(
+        "/api/admin/books/guoyu/units/chapter/intro",
+        headers=auth_header(token),
+        json={"document": updated_doc},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["title"] == "导读修订"
+
+    public_book = client.get("/api/books/guoyu").json()
+    assert public_book["chapters"][0]["title"] == "导读修订"
+    assert public_book["chapters"][0]["year"] == -520
+    assert client.get("/api/books/guoyu/chapters/intro").json()["paragraphs"][0]["original"] == "新原文。"
+
+
+def test_admin_document_update_rejects_mismatched_document_id(tmp_path):
+    client, db_url = admin_client(tmp_path)
+    token = make_user(client, db_url, "admin@example.com", role="admin")
+    assert client.post("/api/admin/books", headers=auth_header(token), json={"id": "guoyu", "title": "国语"}).status_code == 201
+    assert client.post(
+        "/api/admin/books/guoyu/chapters",
+        headers=auth_header(token),
+        json={"id": "intro", "title": "导读", "original": "旧原文。"},
+    ).status_code == 201
+
+    response = client.put(
+        "/api/admin/books/guoyu/units/chapter/intro",
+        headers=auth_header(token),
+        json={"document": {"id": "other", "title": "错位", "paragraphs": []}},
+    )
+
+    assert response.status_code == 409
+    assert "document.id must match reading unit id" in response.json()["detail"]
+
+
+def test_regular_user_cannot_use_document_editor_endpoints(tmp_path):
+    client, db_url = admin_client(tmp_path)
+    token = make_user(client, db_url, "reader@example.com", role="user")
+
+    response = client.get("/api/admin/books/guoyu/units", headers=auth_header(token))
+
+    assert response.status_code == 403
+
+
 def admin_client(tmp_path):
     db_url = f"sqlite:///{tmp_path / 'admin.db'}"
     init_db(db_url)

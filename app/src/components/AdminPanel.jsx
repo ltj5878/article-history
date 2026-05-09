@@ -41,6 +41,10 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
   const [chapterForm, setChapterForm] = useState(emptyChapter);
   const [importText, setImportText] = useState(importTemplate);
   const [importStatus, setImportStatus] = useState('');
+  const [units, setUnits] = useState([]);
+  const [selectedUnitKey, setSelectedUnitKey] = useState('');
+  const [documentText, setDocumentText] = useState('');
+  const [documentStatus, setDocumentStatus] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -50,6 +54,18 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
   }, []);
 
   const selectedBook = books.find(book => book.id === selectedId) || null;
+  const selectedUnit = units.find(unit => unitKey(unit) === selectedUnitKey) || null;
+
+  useEffect(() => {
+    if (!selectedBook) {
+      setUnits([]);
+      setSelectedUnitKey('');
+      setDocumentText('');
+      return;
+    }
+    loadUnits(selectedBook.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBook?.id]);
 
   async function loadBooks(nextSelectedId = selectedId) {
     setError('');
@@ -64,10 +80,48 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
     }
   }
 
+  async function loadUnits(bookId, nextUnitKey = selectedUnitKey) {
+    setError('');
+    try {
+      const list = await adminClient.listUnits(bookId);
+      setUnits(list);
+      const nextUnit = list.find(unit => unitKey(unit) === nextUnitKey) || list[0] || null;
+      setSelectedUnitKey(nextUnit ? unitKey(nextUnit) : '');
+      if (nextUnit) {
+        await loadDocument(bookId, nextUnit);
+      } else {
+        setDocumentText('');
+      }
+    } catch (err) {
+      setError(err?.message || '无法加载阅读文档');
+    }
+  }
+
+  async function loadDocument(bookId, unit) {
+    setDocumentStatus('');
+    const document = await adminClient.getDocument(bookId, unit.kind, unit.id);
+    setDocumentText(JSON.stringify(document, null, 2));
+  }
+
   function pickBook(bookId) {
     const book = books.find(item => item.id === bookId);
     setSelectedId(bookId);
     setBookForm(book ? fromBook(book) : emptyBook);
+  }
+
+  async function pickUnit(key) {
+    const unit = units.find(item => unitKey(item) === key);
+    setSelectedUnitKey(key);
+    if (!selectedBook || !unit) return;
+    setBusy(true);
+    setError('');
+    try {
+      await loadDocument(selectedBook.id, unit);
+    } catch (err) {
+      setError(err?.message || '无法加载阅读文档');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function submitBook(event) {
@@ -75,6 +129,7 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
     setBusy(true);
     setError('');
     setImportStatus('');
+    setDocumentStatus('');
     try {
       const payload = cleanBookPayload(bookForm);
       if (selectedBook?.id === bookForm.id) {
@@ -117,6 +172,7 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
       await adminClient.addChapter(selectedBook.id, cleanChapterPayload(chapterForm));
       setChapterForm(emptyChapter);
       await loadBooks(selectedBook.id);
+      await loadUnits(selectedBook.id);
       onChanged?.();
     } catch (err) {
       setError(err?.message || '新增章节失败');
@@ -130,6 +186,7 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
     setBusy(true);
     setError('');
     setImportStatus('');
+    setDocumentStatus('');
     try {
       const payload = JSON.parse(importText);
       const result = await adminClient.importPackage(payload);
@@ -138,6 +195,26 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
       setImportStatus(`已导入 ${result.booksImported} 本古籍，${result.readingUnitsImported} 篇内容`);
     } catch (err) {
       setError(err instanceof SyntaxError ? '内容包 JSON 格式错误' : (err?.message || '导入内容包失败'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitDocument(event) {
+    event.preventDefault();
+    if (!selectedBook || !selectedUnit) return;
+    setBusy(true);
+    setError('');
+    setDocumentStatus('');
+    try {
+      const document = JSON.parse(documentText);
+      const saved = await adminClient.updateDocument(selectedBook.id, selectedUnit.kind, selectedUnit.id, document);
+      setDocumentText(JSON.stringify(saved, null, 2));
+      await loadUnits(selectedBook.id, selectedUnitKey);
+      onChanged?.();
+      setDocumentStatus('阅读文档已保存');
+    } catch (err) {
+      setError(err instanceof SyntaxError ? '阅读文档 JSON 格式错误' : (err?.message || '保存阅读文档失败'));
     } finally {
       setBusy(false);
     }
@@ -208,6 +285,27 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
             </form>
           )}
 
+          {selectedBook && (
+            <form className="admin-form admin-form--document" onSubmit={submitDocument}>
+              <h3>编辑阅读文档</h3>
+              {documentStatus && <div className="admin-panel__success">{documentStatus}</div>}
+              <label className="admin-field admin-field--wide">
+                <span>章节/文章</span>
+                <select value={selectedUnitKey} onChange={(event) => pickUnit(event.target.value)} disabled={busy || !units.length}>
+                  {units.map(unit => (
+                    <option key={unitKey(unit)} value={unitKey(unit)}>
+                      {unit.kind === 'article' ? '文章' : '章节'} / {unit.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <TextField label="文档 JSON" value={documentText} onChange={setDocumentText} required />
+              <div className="admin-form__actions">
+                <button type="submit" disabled={busy || !selectedUnit}>保存阅读文档</button>
+              </div>
+            </form>
+          )}
+
           <form className="admin-form admin-form--import" onSubmit={submitImport}>
             <h3>导入内容包</h3>
             {importStatus && <div className="admin-panel__success">{importStatus}</div>}
@@ -272,4 +370,8 @@ function cleanChapterPayload(form) {
     original: form.original.trim(),
     translation: form.translation.trim() || null,
   };
+}
+
+function unitKey(unit) {
+  return `${unit.kind}:${unit.id}`;
 }

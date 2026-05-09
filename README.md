@@ -170,6 +170,7 @@ Python 后端提供基础身份接口：
 
 - 新增、编辑、删除书籍元数据
 - 为指定书籍新增基础章节
+- 编辑已有章节/文章的完整阅读文档 JSON
 - 粘贴 JSON 内容包批量导入古籍
 - 保存后刷新公开阅读入口中的书籍和章节列表
 
@@ -182,6 +183,9 @@ Python 后端提供基础身份接口：
 | PATCH | `/api/admin/books/:bookId` | 更新书籍 |
 | DELETE | `/api/admin/books/:bookId` | 删除书籍及其关联内容 |
 | POST | `/api/admin/books/:bookId/chapters` | 新增基础章节 |
+| GET | `/api/admin/books/:bookId/units` | 列出书籍下的章节/文章 |
+| GET | `/api/admin/books/:bookId/units/:kind/:unitId` | 读取章节/文章完整文档 |
+| PUT | `/api/admin/books/:bookId/units/:kind/:unitId` | 替换章节/文章完整文档 |
 | POST | `/api/admin/import` | 导入 JSON 内容包 |
 
 内容包按书籍维度 upsert：导入某本书会更新该书元数据并替换该书旧章节/文章，不会清空其他古籍、用户、时期或地理数据。章节/文章 ID 只需要在同一本书内唯一，不同古籍可以复用 `intro`、`preface` 等自然 ID。
@@ -220,7 +224,7 @@ Python 后端提供基础身份接口：
 }
 ```
 
-当前章节维护是第一版后台能力：可以录入章节标题、年份、时期、原文和译文，也可以导入完整 JSON 内容包。实体标注、路线、文章级结构的可视化编辑和数据库主键迁移会在后续重构切片继续加深。
+当前章节维护可以录入基础章节、导入完整 JSON 内容包，也可以直接编辑已有章节/文章的完整阅读文档 JSON。实体标注、路线、文章级结构的可视化编辑会在后续重构切片继续加深。
 
 ## 部署到 Netlify + Python 后端
 
