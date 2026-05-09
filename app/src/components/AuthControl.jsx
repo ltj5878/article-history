@@ -35,6 +35,9 @@ export default function AuthControl({ auth }) {
           <span className="auth__email">{user.email}</span>
           <span className="auth__role">{user.role === 'admin' ? '管理员' : '读者'}</span>
         </div>
+        {user.role === 'admin' && (
+          <button type="button" className="auth__link" onClick={auth.openAdmin}>后台</button>
+        )}
         <button type="button" className="auth__link" onClick={auth.logout}>退出</button>
       </div>
     );

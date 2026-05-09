@@ -5,6 +5,13 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
+from .admin_content import (
+    AdminContentRepository,
+    BookCreate,
+    BookUpdate,
+    ChapterCreate,
+    DuplicateContentError,
+)
 from .auth import (
     AuthRepository,
     DuplicateUserError,
@@ -115,6 +122,38 @@ def create_app(
     @app.get("/api/admin/ping")
     def admin_ping(user=Depends(require_admin)):
         return {"status": "ok", "role": user.role}
+
+    @app.get("/api/admin/books")
+    def admin_list_books(user=Depends(require_admin)):
+        with session_scope(resolved_db_url) as session:
+            return AdminContentRepository(session).list_books()
+
+    @app.post("/api/admin/books", status_code=201)
+    def admin_create_book(payload: BookCreate, user=Depends(require_admin)):
+        with session_scope(resolved_db_url) as session:
+            try:
+                return AdminContentRepository(session).create_book(payload)
+            except DuplicateContentError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.patch("/api/admin/books/{book_id}")
+    def admin_update_book(book_id: str, payload: BookUpdate, user=Depends(require_admin)):
+        with session_scope(resolved_db_url) as session:
+            return _or_404(lambda: AdminContentRepository(session).update_book(book_id, payload))
+
+    @app.delete("/api/admin/books/{book_id}", status_code=204)
+    def admin_delete_book(book_id: str, user=Depends(require_admin)):
+        with session_scope(resolved_db_url) as session:
+            _or_404(lambda: AdminContentRepository(session).delete_book(book_id))
+        return None
+
+    @app.post("/api/admin/books/{book_id}/chapters", status_code=201)
+    def admin_add_chapter(book_id: str, payload: ChapterCreate, user=Depends(require_admin)):
+        with session_scope(resolved_db_url) as session:
+            try:
+                return _or_404(lambda: AdminContentRepository(session).add_chapter(book_id, payload))
+            except DuplicateContentError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     return app
 

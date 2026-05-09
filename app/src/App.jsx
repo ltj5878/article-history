@@ -4,7 +4,9 @@ import ReaderPane from './components/ReaderPane';
 import MapPane from './components/MapPane';
 import Timeline from './components/Timeline';
 import ErrorBoundary from './components/ErrorBoundary';
+import AdminPanel from './components/AdminPanel';
 import { api } from './api/client';
+import { createAdminClient } from './api/adminClient';
 import { authClient } from './api/authClient';
 
 const PREFS_KEY = 'jingshi.prefs.v1';
@@ -89,6 +91,8 @@ function reducer(state, action) {
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [authUser, setAuthUser] = useState(() => authClient.getStoredUser());
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [dataVersion, setDataVersion] = useState(0);
   const [allBooks, setAllBooks] = useState([]);
   const [bookMeta, setBookMeta] = useState(null);
   const [chapter, setChapter] = useState(null);
@@ -123,7 +127,7 @@ export default function App() {
       .then(setAllBooks)
       .catch(e => { if (e.name !== 'AbortError') setError(e.message); });
     return () => ctrl.abort();
-  }, []);
+  }, [dataVersion]);
 
   // Load book metadata + chapter list when bookId changes
   useEffect(() => {
@@ -137,7 +141,7 @@ export default function App() {
       .then(b => setBookMeta(b))
       .catch(e => { if (e.name !== 'AbortError') setError(e.message); });
     return () => ctrl.abort();
-  }, [state.bookId]);
+  }, [state.bookId, dataVersion]);
 
   const readingItems = useMemo(() => bookMeta?.articles || bookMeta?.chapters || [], [bookMeta]);
   const isArticleBook = Boolean(bookMeta?.articles);
@@ -248,13 +252,26 @@ export default function App() {
     logout: () => {
       authClient.logout();
       setAuthUser(null);
+      setAdminOpen(false);
     },
+    openAdmin: () => setAdminOpen(true),
   };
+
+  const adminClient = createAdminClient({
+    getToken: authClient.getToken,
+  });
 
   return (
     <ErrorBoundary>
       <div className="app">
         <TopNav state={state} dispatch={dispatch} books={books} auth={auth} />
+        {adminOpen && authUser?.role === 'admin' && (
+          <AdminPanel
+            adminClient={adminClient}
+            onClose={() => setAdminOpen(false)}
+            onChanged={() => setDataVersion(version => version + 1)}
+          />
+        )}
         <div className="splitpane" style={{ '--split': `${state.splitRatio * 100}%` }}>
           <div className="splitpane__left">
             <ErrorBoundary>

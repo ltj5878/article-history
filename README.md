@@ -149,7 +149,7 @@ PYTHONPATH=backend DATABASE_URL=sqlite:///backend/.data/content.db JWT_SECRET=de
   backend/.venv/bin/python -m uvicorn api.app:app --host 127.0.0.1 --port 8000
 ```
 
-上线时可将 `DATABASE_URL` 指向 Postgres/Supabase，并必须将 `JWT_SECRET` 设置为强随机密钥。当前阶段已经有注册、登录和管理员权限校验；完整管理员内容维护 UI 会在下一阶段接入。
+上线时可将 `DATABASE_URL` 指向 Postgres/Supabase，并必须将 `JWT_SECRET` 设置为强随机密钥。当前阶段已经有注册、登录、管理员权限校验和管理员内容维护入口。
 
 ### 身份与权限
 
@@ -162,7 +162,27 @@ Python 后端提供基础身份接口：
 | GET | `/api/auth/me` | 返回当前登录用户 |
 | GET | `/api/admin/ping` | 管理员权限校验探针 |
 
-密码使用 Argon2id 哈希后入库；前端只把 access token 放在 `sessionStorage`。公开注册不会自动创建管理员账号，管理员角色目前通过数据库修改授予，后续管理员模块会复用已有权限校验。
+密码使用 Argon2id 哈希后入库；前端只把 access token 放在 `sessionStorage`。公开注册不会自动创建管理员账号，管理员角色目前通过数据库修改授予。
+
+### 管理员内容维护
+
+管理员登录后，顶部导航会出现“后台”入口。该入口通过 Python 后端维护数据库中的书籍和基础章节，不再需要把新增书目写死在前端。当前 UI 支持：
+
+- 新增、编辑、删除书籍元数据
+- 为指定书籍新增基础章节
+- 保存后刷新公开阅读入口中的书籍和章节列表
+
+管理员接口统一要求 Bearer token 且用户角色为 `admin`：
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/admin/books` | 列出全部书籍维护视图 |
+| POST | `/api/admin/books` | 新增书籍 |
+| PATCH | `/api/admin/books/:bookId` | 更新书籍 |
+| DELETE | `/api/admin/books/:bookId` | 删除书籍及其关联内容 |
+| POST | `/api/admin/books/:bookId/chapters` | 新增基础章节 |
+
+当前章节维护是第一版后台能力：可以录入章节标题、年份、时期、原文和译文，实体标注、路线、文章级结构和批量导入会在后续重构切片继续加深。
 
 ## 部署到 Vercel / Netlify（纯静态）
 
