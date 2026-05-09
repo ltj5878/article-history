@@ -11,6 +11,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "test": "node --test scripts/build-data.test.mjs src/api/client.test.mjs src/api/authClient.test.mjs src/api/adminClient.test.mjs",
+    "test:e2e": "playwright test",
     "preview": "vite preview"
   },
   "dependencies": {

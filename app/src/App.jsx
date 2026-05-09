@@ -8,6 +8,7 @@ import AdminPanel from './components/AdminPanel';
 import { api } from './api/client';
 import { createAdminClient } from './api/adminClient';
 import { authClient } from './api/authClient';
+import { getProgress, saveProgress } from './utils/storage';
 
 const PREFS_KEY = 'jingshi.prefs.v1';
 
@@ -24,13 +25,17 @@ const savedPrefs = loadPrefs();
 const legacyShijiBookIds = new Set(['xiangyu', 'gaozu', 'qinshihuang', 'liezhuan']);
 const savedBookId = legacyShijiBookIds.has(savedPrefs.bookId) ? 'shiji' : savedPrefs.bookId;
 
+const initialBookId = savedBookId || 'shiji';
+const initialProgress = getProgress(initialBookId);
+
 const initialState = {
-  bookId: savedBookId || 'shiji',
+  bookId: initialBookId,
   bookTitle: '史记',
   dynasty: '西汉',
-  chapterId: null,
+  chapterId: initialProgress?.chapterId || null,
   activeParagraph: null,
   pendingSection: null,
+  pendingParagraph: initialProgress?.paragraphId || null,
   textMode: 'both',
   timelineCollapsed: savedPrefs.timelineCollapsed || false,
   vertical: false,
@@ -48,11 +53,47 @@ function reducer(state, action) {
       return { ...state, [action.key]: !state[action.key] };
     case 'toggleLayer':
       return { ...state, layers: { ...state.layers, [action.layer]: !state.layers[action.layer] } };
-    case 'selectBook':
-      // Switch to a different book; clear current chapter so the load effect picks the first one
-      return { ...state, bookId: action.id, chapterId: null, activeParagraph: null, pendingSection: null, selectedPlace: null };
+    case 'selectBook': {
+      // Switch books. Restore last reading position if any, else let the load
+      // effect pick the first chapter.
+      const progress = getProgress(action.id);
+      return {
+        ...state,
+        bookId: action.id,
+        chapterId: progress?.chapterId || null,
+        activeParagraph: null,
+        pendingSection: null,
+        pendingParagraph: progress?.paragraphId || null,
+        selectedPlace: null,
+      };
+    }
     case 'selectChapter':
-      return { ...state, chapterId: action.id, activeParagraph: null, pendingSection: null, selectedPlace: null };
+      return { ...state, chapterId: action.id, activeParagraph: null, pendingSection: null, pendingParagraph: null, selectedPlace: null };
+    case 'jumpTo':
+      // Jump to a specific paragraph (used by bookmarks, search, map→text).
+      // If chapter changes, defer paragraph selection via pendingParagraph.
+      if (action.bookId && action.bookId !== state.bookId) {
+        return {
+          ...state,
+          bookId: action.bookId,
+          chapterId: action.chapterId,
+          activeParagraph: null,
+          pendingSection: null,
+          pendingParagraph: action.paragraphId || null,
+          selectedPlace: null,
+        };
+      }
+      if (action.chapterId && action.chapterId !== state.chapterId) {
+        return {
+          ...state,
+          chapterId: action.chapterId,
+          activeParagraph: null,
+          pendingSection: null,
+          pendingParagraph: action.paragraphId || null,
+          selectedPlace: null,
+        };
+      }
+      return { ...state, activeParagraph: action.paragraphId || state.activeParagraph };
     case 'selectPlace':
     case 'focusEntity':
       return { ...state, selectedPlace: action.entity };
@@ -68,6 +109,7 @@ function reducer(state, action) {
           chapterId: target.article,
           pendingSection: target.section || null,
           activeParagraph: null,
+          pendingParagraph: null,
           selectedPlace: null,
         };
       }
@@ -77,10 +119,11 @@ function reducer(state, action) {
           chapterId: action.event.article,
           pendingSection: action.event.section || null,
           activeParagraph: null,
+          pendingParagraph: null,
           selectedPlace: null,
         };
       }
-      return { ...state, chapterId: action.event.chapter, pendingSection: null, activeParagraph: null, selectedPlace: null };
+      return { ...state, chapterId: action.event.chapter, pendingSection: null, activeParagraph: null, pendingParagraph: null, selectedPlace: null };
     case 'setSplit':
       return { ...state, splitRatio: Math.max(0.25, Math.min(0.65, action.value)) };
     default:
@@ -105,6 +148,15 @@ export default function App() {
     if (t) document.documentElement.setAttribute('data-theme', t);
     else document.documentElement.removeAttribute('data-theme');
   }, [state.theme]);
+
+  // Persist reading progress per book
+  useEffect(() => {
+    if (!state.bookId || !state.chapterId || !state.activeParagraph) return;
+    saveProgress(state.bookId, {
+      chapterId: state.chapterId,
+      paragraphId: state.activeParagraph,
+    });
+  }, [state.bookId, state.chapterId, state.activeParagraph]);
 
   // Persist user preferences
   useEffect(() => {
@@ -150,7 +202,9 @@ export default function App() {
   // Guard against stale bookMeta: only auto-select when bookMeta is for the
   // currently-active book (otherwise we'd pick a chapter from the previous book).
   useEffect(() => {
-    if (bookMeta && bookMeta.id === state.bookId && !state.chapterId && readingItems[0]) {
+    if (!bookMeta || bookMeta.id !== state.bookId || !readingItems[0]) return;
+    const exists = state.chapterId && readingItems.some(item => item.id === state.chapterId);
+    if (!exists) {
       dispatch({ type: 'selectChapter', id: readingItems[0].id });
     }
   }, [bookMeta, state.bookId, state.chapterId, readingItems]);
@@ -163,14 +217,19 @@ export default function App() {
     load(state.bookId, state.chapterId, { signal: ctrl.signal })
       .then(c => {
         setChapter(c);
-        const firstParagraph = findSection(c, state.pendingSection)?.paragraphs?.[0] || getFirstParagraph(c);
+        const pending = state.pendingParagraph
+          ? findParagraph(c, state.pendingParagraph)
+          : null;
+        const firstParagraph = pending
+          || findSection(c, state.pendingSection)?.paragraphs?.[0]
+          || getFirstParagraph(c);
         if (firstParagraph) {
           dispatch({ type: 'set', key: 'activeParagraph', value: firstParagraph.id });
         }
       })
       .catch(e => { if (e.name !== 'AbortError') setError(e.message); });
     return () => ctrl.abort();
-  }, [state.chapterId, state.bookId, isArticleBook, state.pendingSection]);
+  }, [state.chapterId, state.bookId, isArticleBook, state.pendingSection, state.pendingParagraph]);
 
   const paragraph = findParagraph(chapter, state.activeParagraph) || getFirstParagraph(chapter);
   const activeSection = findSectionForParagraph(chapter, paragraph?.id);
@@ -274,17 +333,18 @@ export default function App() {
         )}
         <div className="splitpane" style={{ '--split': `${state.splitRatio * 100}%` }}>
           <div className="splitpane__left">
-            <ErrorBoundary>
+            <ErrorBoundary label="阅读器渲染错误">
               <ReaderPane chapter={chapter} state={{ ...state, bookTitle: bookMeta.title, dynasty: bookMeta.dynasty }} dispatch={dispatch} />
             </ErrorBoundary>
           </div>
           <div className="splitpane__gutter" onMouseDown={onSplitDown} />
           <div className="splitpane__right">
-            <ErrorBoundary>
+            <ErrorBoundary label="地图渲染错误">
               <MapPane paragraph={paragraph} state={state} dispatch={dispatch} chapter={mapChapter} period={period} />
             </ErrorBoundary>
           </div>
         </div>
+        <ErrorBoundary label="时间轴渲染错误">
         <Timeline
           events={bookMeta.eraEvents || []}
           chapters={readingItems}
@@ -294,6 +354,7 @@ export default function App() {
           onToggleCollapsed={() => dispatch({ type: 'toggle', key: 'timelineCollapsed' })}
           onPick={(ev) => dispatch({ type: 'pickEra', event: ev })}
         />
+        </ErrorBoundary>
       </div>
     </ErrorBoundary>
   );

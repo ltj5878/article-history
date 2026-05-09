@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { isBookmarked, addBookmark, removeBookmark } from '../utils/storage';
 
 export default function ReaderPane({ chapter, state, dispatch }) {
   const containerRef = useRef(null);
@@ -11,6 +12,15 @@ export default function ReaderPane({ chapter, state, dispatch }) {
     const el = containerRef.current?.querySelector(`[data-pid="${state.activeParagraph}"]`);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [state.activeParagraph, chapter]);
+
+  // Stop any in-flight speech when chapter changes or component unmounts
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [chapter?.id]);
 
   // Close popover when clicking outside or pressing Esc
   useEffect(() => {
@@ -75,13 +85,14 @@ export default function ReaderPane({ chapter, state, dispatch }) {
               <ArticleSection
                 key={section.id}
                 section={section}
+                chapter={chapter}
                 state={state}
                 dispatch={dispatch}
                 onEntityClick={onEntityClick}
               />
             ))
           : chapter.paragraphs.map((p, i) => (
-              <Paragraph key={p.id} idx={i} para={p} state={state} dispatch={dispatch} onEntityClick={onEntityClick} />
+              <Paragraph key={p.id} idx={i} para={p} chapter={chapter} state={state} dispatch={dispatch} onEntityClick={onEntityClick} />
             ))}
         <div className="reader__endseal">
           <img src="/assets/seal-du.svg" alt="读" />
@@ -115,7 +126,7 @@ function formatYear(y) {
   return y < 0 ? `公元前 ${-y} 年` : `公元 ${y} 年`;
 }
 
-function ArticleSection({ section, state, dispatch, onEntityClick }) {
+function ArticleSection({ section, chapter, state, dispatch, onEntityClick }) {
   const firstParagraph = section.paragraphs?.[0];
   const isActive = Boolean(firstParagraph && section.paragraphs?.some(p => p.id === state.activeParagraph));
 
@@ -135,22 +146,103 @@ function ArticleSection({ section, state, dispatch, onEntityClick }) {
       </button>
       <div className="reader-section__body">
         {(section.paragraphs || []).map((p, i) => (
-          <Paragraph key={p.id} idx={i} para={p} state={state} dispatch={dispatch} onEntityClick={onEntityClick} />
+          <Paragraph key={p.id} idx={i} para={p} chapter={chapter} state={state} dispatch={dispatch} onEntityClick={onEntityClick} />
         ))}
       </div>
     </section>
   );
 }
 
-function Paragraph({ idx, para, state, dispatch, onEntityClick }) {
+function Paragraph({ idx, para, state, dispatch, onEntityClick, chapter }) {
   const isActive = state.activeParagraph === para.id;
   const onClick = () => dispatch({ type: "set", key: "activeParagraph", value: para.id });
   const showOriginal = state.textMode === "original" || state.textMode === "both";
   const showTranslation = state.textMode === "translation" || state.textMode === "both";
 
+  const [bookmarked, setBookmarked] = useState(() =>
+    isBookmarked(state.bookId, chapter?.id, para.id)
+  );
+  const [speaking, setSpeaking] = useState(false);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setBookmarked(isBookmarked(state.bookId, chapter?.id, para.id));
+  }, [state.bookId, chapter?.id, para.id]);
+
+  const toggleBookmark = (e) => {
+    e.stopPropagation();
+    if (bookmarked) {
+      removeBookmark(state.bookId, chapter?.id, para.id);
+      setBookmarked(false);
+    } else {
+      const snippet = (para.original || para.translation || '').slice(0, 40);
+      addBookmark({
+        bookId: state.bookId,
+        bookTitle: state.bookTitle,
+        chapterId: chapter?.id,
+        chapterTitle: chapter?.title || '',
+        paragraphId: para.id,
+        snippet,
+      });
+      setBookmarked(true);
+    }
+    window.dispatchEvent(new Event('jingshi:bookmarks-changed'));
+  };
+
+  const toggleSpeak = (e) => {
+    e.stopPropagation();
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+    if (speaking) {
+      synth.cancel();
+      setSpeaking(false);
+      return;
+    }
+    synth.cancel();
+    const text = [para.original, para.translation].filter(Boolean).join('。');
+    if (!text) return;
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'zh-CN';
+    utter.rate = 0.9;
+    utter.onend = () => setSpeaking(false);
+    utter.onerror = () => setSpeaking(false);
+    synth.speak(utter);
+    setSpeaking(true);
+  };
+
+  const ttsSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
+
   return (
     <div className={"para" + (isActive ? " is-active" : "")} data-pid={para.id} onClick={onClick}>
       <div className="para__num">{(idx + 1).toString().padStart(2, "0")}</div>
+      <div className="para__tools" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          className={"para__tool" + (bookmarked ? " is-on" : "")}
+          onClick={toggleBookmark}
+          title={bookmarked ? '取消收藏' : '收藏此段'}
+          aria-label="收藏"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill={bookmarked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
+            <path d="M8 1.8l1.9 3.85 4.25.62-3.07 3 .73 4.23L8 11.5l-3.81 2 .73-4.23-3.07-3 4.25-.62L8 1.8z"/>
+          </svg>
+        </button>
+        {ttsSupported && (
+          <button
+            type="button"
+            className={"para__tool" + (speaking ? " is-on" : "")}
+            onClick={toggleSpeak}
+            title={speaking ? '停止朗读' : '朗读此段'}
+            aria-label="朗读"
+          >
+            {speaking ? (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="4" width="3" height="8"/><rect x="9" y="4" width="3" height="8"/></svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"><path d="M3 6v4h2.5L9 12.5v-9L5.5 6H3z" fill="currentColor"/><path d="M11 5.5c1 .8 1 4.2 0 5"/><path d="M12.5 4c1.8 1.4 1.8 6.6 0 8"/></svg>
+            )}
+          </button>
+        )}
+      </div>
       {showOriginal && (
         <p className="para__original">
           <ParagraphOriginal text={para.original} entities={para.entities} onEntityClick={onEntityClick} />

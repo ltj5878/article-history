@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: article-history-api
+    runtime: python
+    plan: free
+    branch: feature_back
+    buildCommand: python -m pip install --upgrade pip && python -m pip install -r backend/requirements.txt && cd app && npm install && BUILD_DATA_FORCE_LEGACY=1 npm run build:data
+    startCommand: PYTHONPATH=backend python -m api.seed --db-url "$DATABASE_URL" --data-dir app/public/data --if-empty && PYTHONPATH=backend uvicorn api.app:app --host 0.0.0.0 --port "$PORT"
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: article-history-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://article-history.netlify.app
+      - key: PYTHON_VERSION
+        value: 3.13.4
+      - key: NODE_VERSION
+        value: 20
+
+databases:
+  - name: article-history-db
+    databaseName: article_history
+    plan: free

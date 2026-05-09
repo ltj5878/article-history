@@ -37,7 +37,7 @@ ALLOWED_GEO_LAYERS = {
     "ne_land_china",
     "china_provinces",
 }
-DEFAULT_GEO_DIR = Path(__file__).resolve().parents[2] / "server" / "geo"
+DEFAULT_GEO_DIR = Path(__file__).resolve().parents[1] / "data" / "geo"
 
 
 def create_app(

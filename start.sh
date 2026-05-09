@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$ROOT_DIR/app"
-SERVER_DIR="$ROOT_DIR/server"
 PY_BACKEND_DIR="$ROOT_DIR/backend"
 RUN_DIR="$ROOT_DIR/.run"
 LOG_DIR="$ROOT_DIR/logs"
@@ -12,11 +11,6 @@ FRONTEND_HOST="${FRONTEND_HOST:-127.0.0.1}"
 FRONTEND_PORT="${FRONTEND_PORT:-5174}"
 FRONTEND_PID_FILE="$RUN_DIR/frontend.pid"
 FRONTEND_LOG_FILE="$LOG_DIR/frontend.log"
-
-BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
-BACKEND_PORT="${BACKEND_PORT:-4000}"
-BACKEND_PID_FILE="$RUN_DIR/backend.pid"
-BACKEND_LOG_FILE="$LOG_DIR/backend.log"
 
 PY_BACKEND_HOST="${PY_BACKEND_HOST:-127.0.0.1}"
 PY_BACKEND_PORT="${PY_BACKEND_PORT:-8000}"
@@ -49,8 +43,6 @@ port_pid() {
   local port="$1"
   lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null | head -n 1 || true
 }
-
-# === Generic process helpers parameterised on (label, dir, host, port, pid_file, log_file, run_cmd) ===
 
 service_running_pid() {
   local pid_file="$1" port="$2"
@@ -104,63 +96,6 @@ stop_service() {
   log "$label is not running"
 }
 
-# === Backend ===
-
-install_backend_deps() {
-  if [[ ! -d "$SERVER_DIR/node_modules" ]]; then
-    log "Installing backend dependencies..."
-    (cd "$SERVER_DIR" && npm install)
-  fi
-}
-
-start_backend() {
-  local pid
-  if pid="$(service_running_pid "$BACKEND_PID_FILE" "$BACKEND_PORT")"; then
-    log "Backend already running on http://$BACKEND_HOST:$BACKEND_PORT (pid $pid)"
-    printf '%s\n' "$pid" > "$BACKEND_PID_FILE"
-    return 0
-  fi
-
-  install_backend_deps
-
-  log "Starting backend on http://$BACKEND_HOST:$BACKEND_PORT"
-  # Detach: nohup + disown + redirect all 3 streams so the child can survive
-  # the parent shell exiting and won't keep the terminal busy.
-  (
-    cd "$SERVER_DIR"
-    nohup env PORT="$BACKEND_PORT" node index.js < /dev/null > "$BACKEND_LOG_FILE" 2>&1 &
-    echo $!
-  ) > "$RUN_DIR/.backend.pid.tmp"
-  pid="$(cat "$RUN_DIR/.backend.pid.tmp")"
-  rm -f "$RUN_DIR/.backend.pid.tmp"
-  printf '%s\n' "$pid" > "$BACKEND_PID_FILE"
-  disown 2>/dev/null || true
-  log "Backend started (pid $pid, log $BACKEND_LOG_FILE)"
-
-  # Wait briefly for health check to pass so the frontend doesn't see a cold backend
-  for _ in {1..30}; do
-    if curl --noproxy '*' -fs "http://$BACKEND_HOST:$BACKEND_PORT/api/health" >/dev/null 2>&1; then
-      log "Backend healthy"
-      return 0
-    fi
-    sleep 0.2
-  done
-  log "Warning: backend did not respond to /api/health within 6s — see $BACKEND_LOG_FILE"
-}
-
-stop_backend() {
-  stop_service "Backend" "$BACKEND_PID_FILE" "$BACKEND_PORT"
-}
-
-status_backend() {
-  local pid
-  if pid="$(service_running_pid "$BACKEND_PID_FILE" "$BACKEND_PORT")"; then
-    log "Backend:  running on http://$BACKEND_HOST:$BACKEND_PORT (pid $pid)"
-  else
-    log "Backend:  stopped"
-  fi
-}
-
 # === Python content backend ===
 
 install_python_backend_deps() {
@@ -175,9 +110,23 @@ install_python_backend_deps() {
 }
 
 seed_python_backend() {
+  # First-time bootstrap: if the SQLite DB file does not yet exist, generate
+  # the legacy static bundle from server/data and load it. Once the DB is
+  # populated it becomes authoritative; build-data prefers DB-driven export.
+  local db_path
+  if [[ "$PY_BACKEND_DB_URL" == sqlite:///* ]]; then
+    db_path="${PY_BACKEND_DB_URL#sqlite:///}"
+  else
+    db_path=""
+  fi
+
+  if [[ -n "$db_path" && -f "$db_path" ]]; then
+    return 0
+  fi
+
   if [[ ! -f "$APP_DIR/public/data/books.json" ]]; then
-    log "Generating static seed data..."
-    (cd "$APP_DIR" && npm run build:data)
+    log "Generating legacy static seed bundle..."
+    (cd "$APP_DIR" && BUILD_DATA_FORCE_LEGACY=1 npm run build:data)
   fi
   log "Seeding Python backend database..."
   PYTHONPATH="$PY_BACKEND_DIR" "$PYTHON_BIN" -m api.seed \
@@ -239,6 +188,13 @@ check_deploy() {
   PYTHONPATH="$PY_BACKEND_DIR" "$PYTHON_BIN" -m api.deploy_check
 }
 
+export_static() {
+  install_python_backend_deps
+  PYTHONPATH="$PY_BACKEND_DIR" "$PYTHON_BIN" -m api.export_static \
+    --db-url "$PY_BACKEND_DB_URL" \
+    --out-dir "$APP_DIR/public/data"
+}
+
 # === Frontend ===
 
 install_frontend_deps() {
@@ -259,13 +215,13 @@ start_frontend() {
   install_frontend_deps
 
   log "Starting frontend on http://$FRONTEND_HOST:$FRONTEND_PORT"
-  # Detach: nohup + disown + redirect all 3 streams (npm run dev keeps the
-  # terminal busy if stdin isn't closed; vite's dev server stdout otherwise
-  # buffers through the parent shell and looks like a hang).
-  # Frontend reads pre-built static JSON from /data — no backend needed.
+  # Default VITE_API_BASE_URL points at the local Python backend so the
+  # frontend uses the live API; the static-JSON fallback in client.js still
+  # kicks in if the API is unreachable.
+  local default_api="http://$PY_BACKEND_HOST:$PY_BACKEND_PORT"
   (
     cd "$APP_DIR"
-    nohup env VITE_API_BASE_URL="${VITE_API_BASE_URL:-}" \
+    nohup env VITE_API_BASE_URL="${VITE_API_BASE_URL-$default_api}" \
       npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
       < /dev/null > "$FRONTEND_LOG_FILE" 2>&1 &
     echo $!
@@ -292,48 +248,32 @@ status_frontend() {
 
 # === Combined commands ===
 
-# Default: frontend only — the project now ships pre-built static JSON
-# (app/scripts/build-data.mjs runs as a Vite predev hook), so the Express
-# backend is no longer needed for normal local development.
 start_all() {
-  start_frontend
-  log ""
-  log "经史舆图 启动完成（纯前端模式）"
-  log "  前端: http://$FRONTEND_HOST:$FRONTEND_PORT"
-  log "  日志: $LOG_DIR/"
-  log ""
-  log "如需同时启动旧版 Express 后端：./start.sh start-with-backend"
-}
-
-start_with_backend() {
-  start_backend
-  start_frontend
-  log ""
-  log "经史舆图 启动完成（前端 + 后端）"
-  log "  前端: http://$FRONTEND_HOST:$FRONTEND_PORT"
-  log "  后端: http://$BACKEND_HOST:$BACKEND_PORT/api"
-  log "  日志: $LOG_DIR/"
-}
-
-start_with_python_backend() {
   start_python_backend
-  VITE_API_BASE_URL="${VITE_API_BASE_URL:-http://$PY_BACKEND_HOST:$PY_BACKEND_PORT}" start_frontend
+  start_frontend
   log ""
-  log "经史舆图 启动完成（前端 + Python 内容后端）"
+  log "经史舆图 启动完成"
   log "  前端: http://$FRONTEND_HOST:$FRONTEND_PORT"
   log "  Python 后端: http://$PY_BACKEND_HOST:$PY_BACKEND_PORT/api"
   log "  日志: $LOG_DIR/"
 }
 
+start_static_only() {
+  # Static-only mode for offline / Netlify-style demos.
+  (cd "$APP_DIR" && BUILD_DATA_FORCE_LEGACY=1 npm run build:data)
+  VITE_API_BASE_URL="" start_frontend
+  log ""
+  log "经史舆图 启动完成（纯静态前端）"
+  log "  前端: http://$FRONTEND_HOST:$FRONTEND_PORT"
+}
+
 stop_all() {
   stop_frontend || true
   stop_python_backend || true
-  stop_backend || true
 }
 
 status_all() {
   status_python_backend
-  status_backend
   status_frontend
 }
 
@@ -342,55 +282,42 @@ usage() {
 Usage: ./start.sh [command]
 
 Commands:
-  start                 Start frontend only — the default since the project
-                        now reads pre-built static JSON and no longer needs
-                        the Express backend.
-  start-with-backend    Start both frontend and the legacy Express backend.
-  start-with-python     Start Python content backend and frontend configured
-                        to read it, with static JSON fallback in the frontend.
-  stop                  Stop both (frontend + backend if running).
-  restart               Stop both, then run 'start' (frontend only).
-  restart-with-backend  Stop both, then run 'start-with-backend'.
-  restart-with-python   Stop all, then run 'start-with-python'.
-  status                Show running state of both.
-  start-backend         Start only the backend.
-  start-python-backend  Start only the Python content backend.
+  start                 Start Python content backend + frontend (default).
+  start-static          Static-only frontend (no backend) using JSON fallback.
+  stop                  Stop frontend + Python backend.
+  restart               Stop everything, then start.
+  status                Show running state.
+  start-backend         Start only the Python content backend.
   start-frontend        Start only the frontend.
-  stop-backend          Stop only the backend.
-  stop-python-backend   Stop only the Python content backend.
+  stop-backend          Stop only the Python content backend.
   stop-frontend         Stop only the frontend.
   check-deploy          Check deployment-critical backend environment variables.
-  logs [be|py|fe]       Tail backend (be), Python backend (py), or frontend (fe);
-                        defaults to all.
+  export-static         Dump the database to app/public/data fallback artifact.
+  logs [py|fe]          Tail Python backend (py) or frontend (fe); defaults to all.
   help                  Show this message.
 
 Environment overrides:
-  FRONTEND_HOST  default: 127.0.0.1
-  FRONTEND_PORT  default: 5174
-  BACKEND_HOST   default: 127.0.0.1
-  BACKEND_PORT   default: 4000
-  PY_BACKEND_HOST default: 127.0.0.1
-  PY_BACKEND_PORT default: 8000
+  FRONTEND_HOST     default: 127.0.0.1
+  FRONTEND_PORT     default: 5174
+  PY_BACKEND_HOST   default: 127.0.0.1
+  PY_BACKEND_PORT   default: 8000
   PY_BACKEND_DB_URL default: sqlite:///backend/.data/content.db
-  JWT_SECRET default: dev-only-change-me for local start-with-python
-  VITE_API_BASE_URL default: empty for static-only frontend
+  JWT_SECRET        default: dev-only-change-me
+  VITE_API_BASE_URL default: http://PY_BACKEND_HOST:PY_BACKEND_PORT
 USAGE
 }
 
 tail_logs() {
   local target="${1:-both}"
   case "$target" in
-    be|backend)
-      tail -F "$BACKEND_LOG_FILE"
-      ;;
-    py|python)
+    py|python|backend|be)
       tail -F "$PY_BACKEND_LOG_FILE"
       ;;
     fe|frontend)
       tail -F "$FRONTEND_LOG_FILE"
       ;;
     both|*)
-      tail -F "$PY_BACKEND_LOG_FILE" "$BACKEND_LOG_FILE" "$FRONTEND_LOG_FILE"
+      tail -F "$PY_BACKEND_LOG_FILE" "$FRONTEND_LOG_FILE"
       ;;
   esac
 }
@@ -399,11 +326,8 @@ case "${1:-start}" in
   start)
     start_all
     ;;
-  start-with-backend)
-    start_with_backend
-    ;;
-  start-with-python)
-    start_with_python_backend
+  start-static)
+    start_static_only
     ;;
   stop)
     stop_all
@@ -412,30 +336,16 @@ case "${1:-start}" in
     stop_all
     start_all
     ;;
-  restart-with-backend)
-    stop_all
-    start_with_backend
-    ;;
-  restart-with-python)
-    stop_all
-    start_with_python_backend
-    ;;
   status)
     status_all
     ;;
-  start-backend)
-    start_backend
-    ;;
-  start-python-backend)
+  start-backend|start-python-backend)
     start_python_backend
     ;;
   start-frontend)
     start_frontend
     ;;
-  stop-backend)
-    stop_backend
-    ;;
-  stop-python-backend)
+  stop-backend|stop-python-backend)
     stop_python_backend
     ;;
   stop-frontend)
@@ -444,14 +354,17 @@ case "${1:-start}" in
   check-deploy)
     check_deploy
     ;;
+  export-static)
+    export_static
+    ;;
   logs)
     tail_logs "${2:-both}"
     ;;
-  -h|--help|help)
+  help|-h|--help)
     usage
     ;;
   *)
     usage
-    exit 2
+    exit 1
     ;;
 esac

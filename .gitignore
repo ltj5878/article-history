@@ -14,6 +14,7 @@ app/dist/
 **/dist/
 **/build/
 backend/.data/
+backend/**/.data/
 .pytest_cache/
 __pycache__/
 *.pyc
@@ -36,3 +37,6 @@ app/public/data/
 # Claude / preview
 .claude/local/
 .claude/settings.local.json
+
+# Local Netlify folder
+.netlify

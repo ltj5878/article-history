@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import AuthControl from './AuthControl';
+import BookmarksMenu from './BookmarksMenu';
+import SearchMenu from './SearchMenu';
 
 export default function TopNav({ state, dispatch, books, auth }) {
   const book = books.find(b => b.id === state.bookId);
@@ -61,6 +63,9 @@ export default function TopNav({ state, dispatch, books, auth }) {
         onClick={() => dispatch({ type: "toggleLayer", layer: "provinces" })} />
 
       <div className="topnav__divider topnav__divider--vert" />
+
+      <SearchMenu books={books} dispatch={dispatch} />
+      <BookmarksMenu dispatch={dispatch} />
 
       <IconBtn
         icon={`theme-${state.theme}`}

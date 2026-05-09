@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from api.app import create_app
 from api.database import init_db, session_scope
 from api.repository import ContentRepository
-from api.seed import seed_from_static_data
+from api.seed import seed_from_static_data, seed_from_static_data_if_empty
 
 
 def test_health_reports_empty_database(tmp_path):
@@ -166,6 +166,21 @@ def test_seed_from_static_data_imports_books_documents_and_periods(tmp_path):
     assert client.get("/api/books/zuozhuan").json()["chapters"][0]["id"] == "changshao"
     assert client.get("/api/books/zuozhuan/chapters/changshao").json()["paragraphs"][0]["original"] == "齐师伐我。"
     assert client.get("/api/maps/period/spring_autumn_mid").json()["id"] == "spring_autumn_mid"
+
+
+def test_seed_from_static_data_if_empty_preserves_existing_content(tmp_path):
+    data_dir = tmp_path / "data"
+    write_json(data_dir / "books.json", [])
+
+    db_url = f"sqlite:///{tmp_path / 'content.db'}"
+    init_db(db_url)
+    seed_sample_content(db_url)
+
+    seeded = seed_from_static_data_if_empty(db_url, data_dir)
+    client = TestClient(create_app(db_url=db_url))
+
+    assert seeded is False
+    assert client.get("/api/books/shiji").status_code == 200
 
 
 def test_geo_layers_are_served_from_allowed_geo_directory(tmp_path):

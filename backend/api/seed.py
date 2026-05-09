@@ -2,7 +2,10 @@ import argparse
 import json
 from pathlib import Path
 
+from sqlalchemy import select
+
 from .database import init_db, session_scope
+from .models import Book
 from .repository import ContentRepository
 
 
@@ -52,6 +55,17 @@ def seed_from_static_data(db_url: str, data_dir: str | Path) -> None:
         ContentRepository(session).replace_all_content(payload)
 
 
+def seed_from_static_data_if_empty(db_url: str, data_dir: str | Path) -> bool:
+    init_db(db_url)
+    with session_scope(db_url) as session:
+        has_content = session.scalar(select(Book.id).limit(1)) is not None
+    if has_content:
+        return False
+
+    seed_from_static_data(db_url, data_dir)
+    return True
+
+
 def read_json(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -60,8 +74,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Seed the content database from generated static JSON.")
     parser.add_argument("--db-url", required=True)
     parser.add_argument("--data-dir", default="app/public/data")
+    parser.add_argument("--if-empty", action="store_true", help="Only seed when the content database has no books.")
     args = parser.parse_args()
-    seed_from_static_data(args.db_url, args.data_dir)
+    if args.if_empty:
+        seeded = seed_from_static_data_if_empty(args.db_url, args.data_dir)
+        print("Seeded content database." if seeded else "Content database already has books; skipping seed.")
+    else:
+        seed_from_static_data(args.db_url, args.data_dir)
 
 
 if __name__ == "__main__":

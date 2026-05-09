@@ -3,6 +3,8 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { buildMapStyle } from './mapStyle';
 import { api } from '../api/client';
+import { createRouteSourceData, createRoutePointsData, createTerritoryData } from './map/geometry';
+import { useRouteAnimation } from './map/useRouteAnimation';
 
 const CENTER = [113, 34];
 const DEFAULT_ZOOM = 4.5;
@@ -50,51 +52,7 @@ function createCityMarkerEl(type, name, role) {
   return el;
 }
 
-// Animated route path on a custom canvas overlay
-function createRouteSourceData(routes) {
-  if (!routes || !routes.length) return { type: 'FeatureCollection', features: [] };
-  return {
-    type: 'FeatureCollection',
-    features: routes.map((r, i) => ({
-      type: 'Feature',
-      properties: { color: r.color || '#1F1A14', dashed: r.dashed ? 1 : 0, idx: i },
-      geometry: {
-        type: 'LineString',
-        coordinates: r.points.map(p => [p.lng, p.lat]),
-      },
-    })),
-  };
-}
-
-function createRoutePointsData(routes) {
-  if (!routes || !routes.length) return { type: 'FeatureCollection', features: [] };
-  const features = [];
-  routes.forEach(r => {
-    r.points.forEach(p => {
-      features.push({
-        type: 'Feature',
-        properties: { label: p.label, color: r.color || '#1F1A14' },
-        geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
-      });
-    });
-  });
-  return { type: 'FeatureCollection', features };
-}
-
-function createTerritoryData(states) {
-  if (!states || !states.length) return { type: 'FeatureCollection', features: [] };
-  return {
-    type: 'FeatureCollection',
-    features: states.map(s => ({
-      type: 'Feature',
-      properties: { name: s.name, color: s.color },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [[...s.polygon, s.polygon[0]]],
-      },
-    })),
-  };
-}
+// Geometry helpers and route animation hook live in ./map/
 
 export default function MapPane({ paragraph, state, dispatch, chapter, period }) {
   const mapRef = useRef(null);
@@ -103,6 +61,10 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
   const [mapReady, setMapReady] = useState(false);
   const [replayKey, setReplayKey] = useState(0);
   const animKey = `${paragraph?.id || 'none'}:${replayKey}`;
+  const { progress: animProgress, playing, togglePlay, scrub } = useRouteAnimation({
+    paragraphId: paragraph?.id,
+    replayKey,
+  });
 
   // Show ALL place entities from the entire chapter (across all paragraphs), not
   // just the active paragraph. Deduplication is name + proximity-based: two
@@ -173,6 +135,7 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
           pitchWithRotate: false,
           dragRotate: false,
           touchZoomRotate: false,
+          preserveDrawingBuffer: true,  // required for PNG export via canvas.toBlob
         });
       } catch (e) {
         console.warn('MapLibre init failed:', e);
@@ -452,14 +415,16 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
     });
   }, [period, state.layers.places, mapReady, placeEntities, state.selectedPlace, dispatch]);
 
-  // Routes
+  // Routes — re-evaluated on animProgress for play/scrub animation
   useEffect(() => {
     const map = mapInstance.current;
     if (!map || !mapReady) return;
     const routesData = state.layers.routes ? (paragraph?.routes || []) : [];
-    map.getSource('routes')?.setData(createRouteSourceData(routesData));
-    map.getSource('route-points')?.setData(createRoutePointsData(routesData));
-  }, [paragraph, state.layers.routes, mapReady, animKey]);
+    map.getSource('routes')?.setData(createRouteSourceData(routesData, animProgress));
+    map.getSource('route-points')?.setData(animProgress >= 1 ? createRoutePointsData(routesData) : { type: 'FeatureCollection', features: [] });
+  }, [paragraph, state.layers.routes, mapReady, animKey, animProgress]);
+
+  // (route animation managed by useRouteAnimation hook)
 
   // POI markers
   useEffect(() => {
@@ -512,6 +477,28 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
     });
   }, [state.selectedPlace]);
 
+  // Reverse linkage: when a place is selected on the map, scroll the reader to
+  // the first paragraph mentioning it (by name + proximity). Skipped if the
+  // active paragraph already mentions this place — avoids fighting text→map.
+  useEffect(() => {
+    if (!state.selectedPlace || !chapter?.paragraphs) return;
+    const target = state.selectedPlace;
+    const activeMentions = (paragraph?.entities || []).some(e =>
+      e.type === 'place' && e.text === target.text &&
+      Math.abs((e.lat ?? 0) - (target.lat ?? 0)) < SAME_PLACE_THRESHOLD_DEG &&
+      Math.abs((e.lng ?? 0) - (target.lng ?? 0)) < SAME_PLACE_THRESHOLD_DEG
+    );
+    if (activeMentions) return;
+    const found = chapter.paragraphs.find(p =>
+      (p.entities || []).some(e =>
+        e.type === 'place' && e.text === target.text &&
+        Math.abs((e.lat ?? 0) - (target.lat ?? 0)) < SAME_PLACE_THRESHOLD_DEG &&
+        Math.abs((e.lng ?? 0) - (target.lng ?? 0)) < SAME_PLACE_THRESHOLD_DEG
+      )
+    );
+    if (found) dispatch({ type: 'set', key: 'activeParagraph', value: found.id });
+  }, [state.selectedPlace, chapter, paragraph, dispatch]);
+
   // Auto-fit on chapter change — bounds cover the whole chapter (all paragraphs'
   // entities + routes), so when 乌江自刎 章节加载时, 阴陵/东城/乌江 都在视野内
   useEffect(() => {
@@ -555,6 +542,55 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
   }, []);
   const handleReplay = useCallback(() => setReplayKey(k => k + 1), []);
 
+  const handleExport = useCallback(async () => {
+    const map = mapInstance.current;
+    if (!map) return;
+    map.triggerRepaint();
+    // Wait one frame so the next paint is captured before readback
+    await new Promise(r => requestAnimationFrame(r));
+    const mapCanvas = map.getCanvas();
+    const W = mapCanvas.width;
+    const H = mapCanvas.height;
+    const bandH = 140;  // bottom band for title + text
+    const out = document.createElement('canvas');
+    out.width = W;
+    out.height = H + bandH;
+    const ctx = out.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(mapCanvas, 0, 0);
+
+    // Bottom band — paper background + dark text
+    ctx.fillStyle = '#F5F0E8';
+    ctx.fillRect(0, H, W, bandH);
+    ctx.fillStyle = '#1F1A14';
+    ctx.font = '600 22px "Noto Serif SC", serif';
+    const title = `${chapter?.title || ''}${period?.label ? ' · ' + period.label : ''}`;
+    ctx.fillText(title, 24, H + 36);
+
+    ctx.font = '14px "Noto Serif SC", serif';
+    ctx.fillStyle = '#3A2F22';
+    const text = (paragraph?.original || '').slice(0, 200);
+    wrapText(ctx, text, 24, H + 64, W - 48, 22);
+
+    ctx.font = '11px "JetBrains Mono", monospace';
+    ctx.fillStyle = '#8A7B66';
+    ctx.fillText('经史舆图 · jingshi-map', 24, H + bandH - 14);
+
+    out.toBlob(blob => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const safe = (chapter?.id || 'map').replace(/[^\w-]/g, '_');
+      a.download = `jingshi-${safe}.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, 'image/png');
+  }, [chapter, paragraph, period]);
+  const hasRoutes = Boolean(paragraph?.routes?.length) && state.layers.routes;
+  const onPlayPause = useCallback(() => { if (hasRoutes) togglePlay(); }, [hasRoutes, togglePlay]);
+  const onScrub = useCallback((e) => scrub(e.target.value), [scrub]);
+
   return (
     <div className="map">
       <div ref={mapRef} className="map__libre" />
@@ -574,14 +610,34 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
         <button className="iconbtn" title="重播" onClick={handleReplay}>
           <img src="/assets/icons/replay.svg" />
         </button>
+        <button className="iconbtn" title="导出当前视图为图片" onClick={handleExport}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round">
+            <path d="M8 1.5v8.5"/><path d="M4.5 6.5L8 10l3.5-3.5"/><path d="M2 12.5v1.5h12v-1.5"/>
+          </svg>
+        </button>
+        {hasRoutes && (
+          <button className="iconbtn" title={playing ? '暂停' : '播放路线动画'} onClick={onPlayPause}>
+            {playing ? (
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="3" y="2" width="3" height="10"/><rect x="8" y="2" width="3" height="10"/></svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M3 2l9 5-9 5z"/></svg>
+            )}
+          </button>
+        )}
       </div>
+      {hasRoutes && (
+        <div className="map__scrubber">
+          <input
+            type="range" min="0" max="1" step="0.01"
+            value={animProgress}
+            onChange={onScrub}
+            aria-label="路线进度"
+          />
+        </div>
+      )}
 
       {period && (
-        <div className="map__cartouche">
-          <div className="cart__line"></div>
-          <div className="cart__title">{period.label}</div>
-          <div className="cart__sub">据 谭其骧《中国历史地图集》改绘</div>
-        </div>
+        <Cartouche label={period.label} />
       )}
 
       <div className="map__legend map__legend--full">
@@ -597,6 +653,57 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
 
       {state.selectedPlace && (
         <InfoCard place={state.selectedPlace} onClose={() => dispatch({ type: 'selectPlace', entity: null })} />
+      )}
+    </div>
+  );
+}
+
+// CJK-friendly text wrap by character count to fit pixel width.
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+  if (!text) return;
+  let line = '';
+  let cy = y;
+  for (const ch of text) {
+    const next = line + ch;
+    if (ctx.measureText(next).width > maxWidth && line) {
+      ctx.fillText(line, x, cy);
+      line = ch;
+      cy += lineHeight;
+      if (cy > y + lineHeight * 3) {
+        ctx.fillText(line + '…', x, cy);
+        return;
+      }
+    } else {
+      line = next;
+    }
+  }
+  if (line) ctx.fillText(line, x, cy);
+}
+
+function Cartouche({ label }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="map__cartouche">
+      <div className="cart__line"></div>
+      <div className="cart__title">{label}</div>
+      <div className="cart__sub">
+        据 谭其骧《中国历史地图集》改绘
+        <button
+          type="button"
+          className="cart__info"
+          onClick={() => setOpen(o => !o)}
+          title="数据来源说明"
+          aria-label="数据来源说明"
+        >?</button>
+      </div>
+      {open && (
+        <div className="cart__source-pop" onClick={(e) => e.stopPropagation()}>
+          <button className="cart__source-close" onClick={() => setOpen(false)} aria-label="关闭">×</button>
+          <div className="cart__source-title">关于历史疆界</div>
+          <p>9 个时期的政权疆界依据 <b>谭其骧主编《中国历史地图集》</b>（中国地图出版社）轮廓改绘，并参考史料对争议地段做了简化。</p>
+          <p>春秋战国早期边界在学界存在争议；本图主要呈现政治势力范围，并非严格的现代意义上的国界。读者参阅时请留意时段叠加与文献版本差异。</p>
+          <p style={{ color: 'var(--fg-4)' }}>地理底图：Natural Earth 1:50m，公共领域。</p>
+        </div>
       )}
     </div>
   );
