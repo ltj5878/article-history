@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const emptyBook = { id: '', title: '', bookSeries: '', dynasty: '', author: '', description: '' };
 const emptyChapter = { id: '', title: '', subtitle: '', year: '', period: '', original: '', translation: '' };
@@ -47,66 +47,93 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
   const [documentStatus, setDocumentStatus] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    loadBooks();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const unitsRequestRef = useRef(0);
+  const documentRequestRef = useRef(0);
 
   const selectedBook = books.find(book => book.id === selectedId) || null;
   const selectedUnit = units.find(unit => unitKey(unit) === selectedUnitKey) || null;
 
-  useEffect(() => {
-    if (!selectedBook) {
-      setUnits([]);
-      setSelectedUnitKey('');
-      setDocumentText('');
-      return;
-    }
-    loadUnits(selectedBook.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedBook?.id]);
-
-  async function loadBooks(nextSelectedId = selectedId) {
-    setError('');
+  async function loadBooks(nextSelectedId = selectedId, isCurrent = () => true) {
     try {
       const list = await adminClient.listBooks();
+      if (!isCurrent()) return;
       setBooks(list);
       const nextSelected = list.find(book => book.id === nextSelectedId) || list[0] || null;
       setSelectedId(nextSelected?.id || '');
       setBookForm(nextSelected ? fromBook(nextSelected) : emptyBook);
+      if (nextSelected) {
+        await loadUnits(nextSelected.id, '');
+      } else {
+        clearUnits();
+      }
     } catch (err) {
-      setError(err?.message || '无法加载后台数据');
+      if (isCurrent()) {
+        setError(err?.message || '无法加载后台数据');
+      }
     }
   }
 
-  async function loadUnits(bookId, nextUnitKey = selectedUnitKey) {
+  function clearUnits() {
+    unitsRequestRef.current += 1;
+    documentRequestRef.current += 1;
+    setUnits([]);
+    setSelectedUnitKey('');
+    setDocumentText('');
+    setDocumentStatus('');
+  }
+
+  async function loadUnits(bookId, nextUnitKey = '') {
+    const requestId = ++unitsRequestRef.current;
+    documentRequestRef.current += 1;
     setError('');
+    setUnits([]);
+    setSelectedUnitKey('');
+    setDocumentText('');
+    setDocumentStatus('');
     try {
       const list = await adminClient.listUnits(bookId);
+      if (requestId !== unitsRequestRef.current) return;
       setUnits(list);
       const nextUnit = list.find(unit => unitKey(unit) === nextUnitKey) || list[0] || null;
       setSelectedUnitKey(nextUnit ? unitKey(nextUnit) : '');
       if (nextUnit) {
-        await loadDocument(bookId, nextUnit);
+        await loadDocument(bookId, nextUnit, requestId);
       } else {
         setDocumentText('');
       }
     } catch (err) {
-      setError(err?.message || '无法加载阅读文档');
+      if (requestId === unitsRequestRef.current) {
+        setError(err?.message || '无法加载阅读文档');
+      }
     }
   }
 
-  async function loadDocument(bookId, unit) {
+  async function loadDocument(bookId, unit, unitsRequestId = null) {
+    const requestId = ++documentRequestRef.current;
     setDocumentStatus('');
-    const document = await adminClient.getDocument(bookId, unit.kind, unit.id);
+    let document;
+    try {
+      document = await adminClient.getDocument(bookId, unit.kind, unit.id);
+    } catch (err) {
+      if (
+        requestId !== documentRequestRef.current
+        || (unitsRequestId !== null && unitsRequestId !== unitsRequestRef.current)
+      ) return false;
+      throw err;
+    }
+    if (
+      requestId !== documentRequestRef.current
+      || (unitsRequestId !== null && unitsRequestId !== unitsRequestRef.current)
+    ) return false;
     setDocumentText(JSON.stringify(document, null, 2));
+    return true;
   }
 
   function pickBook(bookId) {
     const book = books.find(item => item.id === bookId);
     setSelectedId(bookId);
     setBookForm(book ? fromBook(book) : emptyBook);
+    void loadUnits(bookId);
   }
 
   async function pickUnit(key) {
@@ -123,6 +150,19 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    let isCurrent = true;
+    queueMicrotask(() => {
+      if (isCurrent) void loadBooks('', () => isCurrent);
+    });
+    return () => {
+      isCurrent = false;
+      unitsRequestRef.current += 1;
+      documentRequestRef.current += 1;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function submitBook(event) {
     event.preventDefault();
@@ -234,7 +274,7 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
 
       <div className="admin-panel__body">
         <div className="admin-panel__list">
-          <button type="button" className={!selectedId ? 'is-active' : ''} onClick={() => { setSelectedId(''); setBookForm(emptyBook); }}>
+          <button type="button" className={!selectedId ? 'is-active' : ''} onClick={() => { setSelectedId(''); setBookForm(emptyBook); clearUnits(); }}>
             新增古籍
           </button>
           {books.map(book => (

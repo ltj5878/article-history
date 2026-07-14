@@ -87,35 +87,27 @@
 
 ### 启动
 
-项目保留纯前端静态模式，同时新增 Python 内容后端。默认 `./start.sh start`
-仍只启动前端并读取静态 JSON；需要验证数据库驱动的数据路径时，使用
-`./start.sh start-with-python`。
+项目默认启动 Python 内容后端与前端；如需离线或静态托管模式，可使用
+`./start.sh start-static`，前端会直接读取生成的 JSON 数据。
 
 ```bash
-# 默认：只启前端（纯静态数据）
+# 默认：前端 + Python 内容后端（前端优先读 API，失败时 fallback 到静态 JSON）
 ./start.sh start
-#   前端: http://127.0.0.1:5174
-
-# 前端 + Python 内容后端（前端优先读 API，失败时 fallback 到静态 JSON）
-./start.sh start-with-python
 #   前端: http://127.0.0.1:5174
 #   后端: http://127.0.0.1:8000/api
 
-# 兼容旧用法：同时启动 Express 后端（一般不需要）
-./start.sh start-with-backend
+# 纯静态前端（适用于离线演示或静态托管验证）
+./start.sh start-static
 #   前端: http://127.0.0.1:5174
-#   后端: http://127.0.0.1:4000/api
 ```
 
 ### 其他命令
 
 ```bash
 ./start.sh stop                    # 停止运行中的所有服务
-./start.sh restart                 # 重启（前端模式）
-./start.sh restart-with-backend    # 重启（前端 + 后端）
+./start.sh restart                 # 重启前端和 Python 内容后端
 ./start.sh status                  # 查看运行状态
-./start.sh start-python-backend    # 只启 Python 内容后端
-./start.sh start-backend           # 只启后端
+./start.sh start-backend           # 只启 Python 内容后端
 ./start.sh start-frontend          # 只启前端
 ./start.sh logs                    # 实时查看日志
 ./start.sh help                    # 查看完整命令
@@ -124,7 +116,7 @@
 ### 自定义端口
 
 ```bash
-FRONTEND_PORT=5180 PY_BACKEND_PORT=8001 ./start.sh start-with-python
+FRONTEND_PORT=5180 PY_BACKEND_PORT=8001 ./start.sh start
 ```
 
 ### Python 内容后端
