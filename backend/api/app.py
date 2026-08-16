@@ -1,9 +1,9 @@
 from pathlib import Path
 import os
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 
 from .admin_content import (
     AdminContentRepository,
@@ -28,6 +28,20 @@ from .auth import (
 from .content_import import ContentImportError, ContentImportPackage, ContentPackageImporter
 from .database import get_database_url, init_db, session_scope
 from .deployment import deployment_report
+from .oauth import (
+    OAUTH_STATE_COOKIE,
+    OAUTH_STATE_MINUTES,
+    OAuthConfigurationError,
+    OAuthProviderError,
+    authorization_url,
+    create_oauth_state,
+    exchange_oauth_code,
+    frontend_callback_url,
+    oauth_cookie_secure,
+    provider_config,
+    provider_statuses,
+    validate_oauth_state,
+)
 from .repository import ContentNotFoundError, ContentRepository
 
 ALLOWED_GEO_LAYERS = {
@@ -123,9 +137,98 @@ def create_app(
                 user=to_user_response(user),
             )
 
+    @app.get("/api/auth/oauth/providers")
+    def oauth_providers():
+        return {"providers": provider_statuses()}
+
+    @app.get("/api/auth/oauth/{provider}/start")
+    def oauth_start(provider: str):
+        try:
+            config = provider_config(provider)
+            if not config.enabled:
+                raise OAuthConfigurationError(f"{config.label} 登录尚未配置")
+            state = create_oauth_state(provider, resolve_jwt_secret(jwt_secret))
+            location = authorization_url(config, state)
+        except OAuthConfigurationError as exc:
+            status_code = 404 if str(exc) == "Unsupported OAuth provider" else 503
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+        response = RedirectResponse(location, status_code=302)
+        response.set_cookie(
+            OAUTH_STATE_COOKIE,
+            state,
+            max_age=OAUTH_STATE_MINUTES * 60,
+            httponly=True,
+            secure=oauth_cookie_secure(config),
+            samesite="lax",
+            path=f"/api/auth/oauth/{provider}/callback",
+        )
+        return response
+
+    @app.get("/api/auth/oauth/{provider}/callback")
+    async def oauth_callback(
+        provider: str,
+        request: Request,
+        code: str | None = None,
+        state: str | None = None,
+        error: str | None = None,
+    ):
+        try:
+            config = provider_config(provider)
+        except OAuthConfigurationError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        cookie_path = f"/api/auth/oauth/{provider}/callback"
+        try:
+            validate_oauth_state(
+                state or "",
+                request.cookies.get(OAUTH_STATE_COOKIE),
+                provider,
+                resolve_jwt_secret(jwt_secret),
+            )
+        except OAuthProviderError as exc:
+            response = JSONResponse({"detail": str(exc)}, status_code=400)
+            response.delete_cookie(OAUTH_STATE_COOKIE, path=cookie_path, secure=oauth_cookie_secure(config))
+            return response
+
+        if error or not code:
+            response = RedirectResponse(
+                frontend_callback_url(oauth_error="用户取消了第三方登录", oauth_provider=provider),
+                status_code=302,
+            )
+            response.delete_cookie(OAUTH_STATE_COOKIE, path=cookie_path, secure=oauth_cookie_secure(config))
+            return response
+
+        try:
+            profile = await exchange_oauth_code(config, code)
+            if profile.provider != provider:
+                raise OAuthProviderError("第三方登录身份来源不匹配")
+            with session_scope(resolved_db_url) as session:
+                user, _ = AuthRepository(session).get_or_create_oauth_user(
+                    profile.provider,
+                    profile.subject,
+                    profile.display_name,
+                    profile.avatar_url,
+                )
+                if not user.is_active:
+                    raise OAuthProviderError("账号已停用，请联系管理员")
+                token = create_access_token(user, resolve_jwt_secret(jwt_secret))
+            location = frontend_callback_url(
+                oauth_access_token=token,
+                oauth_provider=provider,
+            )
+        except (OAuthProviderError, OAuthConfigurationError) as exc:
+            location = frontend_callback_url(oauth_error=str(exc), oauth_provider=provider)
+
+        response = RedirectResponse(location, status_code=302)
+        response.delete_cookie(OAUTH_STATE_COOKIE, path=cookie_path, secure=oauth_cookie_secure(config))
+        return response
+
     @app.get("/api/auth/me")
     def me(user=Depends(get_current_user)):
-        return to_user_response(user)
+        with session_scope(resolved_db_url) as session:
+            identity = AuthRepository(session).get_oauth_identity(user.id)
+            return to_user_response(user, identity)
 
     @app.get("/api/admin/ping")
     def admin_ping(user=Depends(require_admin)):

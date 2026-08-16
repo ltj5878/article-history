@@ -1,18 +1,27 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { pushSearchHistory, loadSearchHistory } from '../utils/storage';
 
 // Search across all chapters of all books (lazy-loaded and cached client-side).
 // Matches against paragraph text (original + translation) and entity names.
-export default function SearchMenu({ books, dispatch }) {
+export default function SearchMenu({ dispatch, catalogVersion = 0 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [tab, setTab] = useState('search');  // 'search' | 'place' | 'person' | 'event'
   const [history, setHistory] = useState(() => loadSearchHistory());
   const [index, setIndex] = useState({});      // { [bookId::chapterId]: chapterDoc }
   const [loadingMsg, setLoadingMsg] = useState('');
+  const [indexError, setIndexError] = useState('');
   const ref = useRef(null);
   const inputRef = useRef(null);
+  const menuId = useId();
+  const indexRef = useRef({});
+
+  useEffect(() => {
+    indexRef.current = {};
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIndex({});
+  }, [catalogVersion]);
 
   useEffect(() => {
     if (!open) return;
@@ -29,41 +38,53 @@ export default function SearchMenu({ books, dispatch }) {
     };
   }, [open]);
 
-  // Lazy-load all chapters of all books on first open. Cached in state so subsequent
-  // opens are instant. Failures are silent — search just won't find that chapter.
+  // Lazy-load all chapters of all books on first open. The catalog is fetched
+  // independently from the active book so search is genuinely cross-book.
   useEffect(() => {
     if (!open) return;
-    let cancelled = false;
+    const ctrl = new AbortController();
     (async () => {
-      const targets = [];
-      for (const b of books) {
-        for (const c of (b.chapters || [])) {
-          const key = `${b.id}::${c.id}`;
-          if (!index[key]) targets.push({ bookId: b.id, bookTitle: b.title, chapterId: c.id, chapterTitle: c.title, kind: b.itemKind });
-        }
+      setIndexError('');
+      setLoadingMsg('正在读取全部书目…');
+      const catalog = await api.listReadingUnits({ signal: ctrl.signal });
+      if (ctrl.signal.aborted) return;
+      const keyOf = item => `${item.bookId}::${item.chapterId}`;
+      const targets = catalog.filter(item => !indexRef.current[keyOf(item)]);
+      if (!targets.length) {
+        setLoadingMsg('');
+        return;
       }
-      if (!targets.length) return;
       setLoadingMsg(`索引中… 0/${targets.length}`);
-      const next = { ...index };
+      const next = { ...indexRef.current };
       let done = 0;
+      let failed = 0;
       for (const t of targets) {
         try {
           const load = t.kind === 'article' ? api.getArticle : api.getChapter;
-          const doc = await load(t.bookId, t.chapterId);
-          if (cancelled) return;
-          next[`${t.bookId}::${t.chapterId}`] = { ...doc, _bookId: t.bookId, _bookTitle: t.bookTitle, _chapterId: t.chapterId, _chapterTitle: t.chapterTitle };
-        } catch {
-          // skip failed chapters
+          const doc = await load(t.bookId, t.chapterId, { signal: ctrl.signal });
+          if (ctrl.signal.aborted) return;
+          next[keyOf(t)] = { ...doc, _bookId: t.bookId, _bookTitle: t.bookTitle, _chapterId: t.chapterId, _chapterTitle: t.chapterTitle };
+        } catch (error) {
+          if (error?.name === 'AbortError') return;
+          failed += 1;
         }
         done++;
-        if (!cancelled && done % 2 === 0) setLoadingMsg(`索引中… ${done}/${targets.length}`);
+        if (!ctrl.signal.aborted && (done % 2 === 0 || done === targets.length)) {
+          setLoadingMsg(`索引中… ${done}/${targets.length}`);
+        }
       }
-      if (cancelled) return;
+      if (ctrl.signal.aborted) return;
+      indexRef.current = next;
       setIndex(next);
       setLoadingMsg('');
-    })();
-    return () => { cancelled = true; };
-  }, [open, books]); // eslint-disable-line react-hooks/exhaustive-deps
+      if (failed) setIndexError(`${failed} 篇内容暂时无法加入索引，请稍后重试。`);
+    })().catch(error => {
+      if (error?.name === 'AbortError') return;
+      setLoadingMsg('');
+      setIndexError(error?.message || '无法建立搜索索引');
+    });
+    return () => ctrl.abort();
+  }, [open, catalogVersion]);
 
   const results = useMemo(() => {
     const term = q.trim();
@@ -71,7 +92,9 @@ export default function SearchMenu({ books, dispatch }) {
     const out = [];
     for (const key of Object.keys(index)) {
       const doc = index[key];
-      const paras = doc.paragraphs || (doc.sections || []).flatMap(s => s.paragraphs || []);
+      const paras = Array.isArray(doc.paragraphs)
+        ? doc.paragraphs
+        : (Array.isArray(doc.sections) ? doc.sections : []).flatMap(s => (Array.isArray(s?.paragraphs) ? s.paragraphs : []));
       for (const p of paras) {
         const hay = `${p.original || ''}\n${p.translation || ''}`;
         const idx = hay.indexOf(term);
@@ -83,7 +106,10 @@ export default function SearchMenu({ books, dispatch }) {
           const end = Math.min(hay.length, idx + term.length + 16);
           snippet = (start > 0 ? '…' : '') + hay.slice(start, end).replace(/\n/g, ' ') + (end < hay.length ? '…' : '');
         } else {
-          const ent = (p.entities || []).find(e => e.text && e.text.includes(term));
+          const ent = (p.entities || []).find(e => {
+            const text = typeof e?.text === 'string' ? e.text : '';
+            return text && text.includes(term);
+          });
           if (ent) {
             matchType = ent.type === 'place' ? '地名' : ent.type === 'person' ? '人物' : '事件';
             snippet = `${ent.text}${ent.description ? ' · ' + ent.description.slice(0, 40) : ''}`;
@@ -112,10 +138,15 @@ export default function SearchMenu({ books, dispatch }) {
     const buckets = { place: new Map(), person: new Map(), event: new Map() };
     for (const key of Object.keys(index)) {
       const doc = index[key];
-      const paras = doc.paragraphs || (doc.sections || []).flatMap(s => s.paragraphs || []);
+      const paras = Array.isArray(doc.paragraphs)
+        ? doc.paragraphs
+        : (Array.isArray(doc.sections) ? doc.sections : []).flatMap(s => (Array.isArray(s?.paragraphs) ? s.paragraphs : []));
       for (const p of paras) {
-        for (const e of (p.entities || [])) {
-          if (!buckets[e.type]) continue;
+        for (const rawEntity of (p.entities || [])) {
+          if (!rawEntity || !buckets[rawEntity.type]) continue;
+          const text = typeof rawEntity.text === 'string' ? rawEntity.text : rawEntity.text == null ? '' : String(rawEntity.text);
+          if (!text) continue;
+          const e = { ...rawEntity, text };
           const coord = e.lat && e.lng ? `${Math.round(e.lat * 4)}_${Math.round(e.lng * 4)}` : '_';
           const k = `${e.text}::${coord}`;
           if (!buckets[e.type].has(k)) {
@@ -158,14 +189,17 @@ export default function SearchMenu({ books, dispatch }) {
         type="button"
         className="iconbtn"
         title="搜索"
-        onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
+        aria-label="搜索"
+        aria-expanded={open}
+        aria-controls={menuId}
+        onClick={() => setOpen(o => !o)}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
           <circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5l3 3"/>
         </svg>
       </button>
       {open && (
-        <div className="picker__menu" style={{ minWidth: 360, maxWidth: 480, maxHeight: 480, overflowY: 'auto', padding: 0 }} onClick={(e) => e.stopPropagation()}>
+        <div id={menuId} className="picker__menu" style={{ minWidth: 360, maxWidth: 480, maxHeight: 480, overflowY: 'auto', padding: 0 }} onClick={(e) => e.stopPropagation()}>
           <div style={{ padding: 10, borderBottom: '1px solid var(--border)' }}>
             <input
               ref={inputRef}
@@ -196,6 +230,9 @@ export default function SearchMenu({ books, dispatch }) {
             </div>
             {loadingMsg && (
               <div style={{ fontSize: 11, color: 'var(--fg-4)', marginTop: 6 }}>{loadingMsg}</div>
+            )}
+            {indexError && (
+              <div role="status" style={{ fontSize: 11, color: 'var(--c-vermillion)', marginTop: 6 }}>{indexError}</div>
             )}
           </div>
           <div>

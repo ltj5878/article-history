@@ -16,6 +16,7 @@ PY_BACKEND_HOST="${PY_BACKEND_HOST:-127.0.0.1}"
 PY_BACKEND_PORT="${PY_BACKEND_PORT:-8000}"
 PY_BACKEND_DB_URL="${PY_BACKEND_DB_URL:-sqlite:///$PY_BACKEND_DIR/.data/content.db}"
 PY_BACKEND_JWT_SECRET="${JWT_SECRET:-dev-only-change-me}"
+PY_BACKEND_CORS_ORIGINS="${CORS_ORIGINS:-http://127.0.0.1:$FRONTEND_PORT,http://localhost:$FRONTEND_PORT}"
 PY_BACKEND_PID_FILE="$RUN_DIR/python-backend.pid"
 PY_BACKEND_LOG_FILE="$LOG_DIR/python-backend.log"
 PYTHON_BIN="$PY_BACKEND_DIR/.venv/bin/python"
@@ -103,35 +104,28 @@ install_python_backend_deps() {
     log "Creating Python backend virtualenv..."
     python3 -m venv "$PY_BACKEND_DIR/.venv"
   fi
-  if ! "$PYTHON_BIN" -c "import fastapi, sqlalchemy, pytest" >/dev/null 2>&1; then
+  if ! "$PYTHON_BIN" -c "import fastapi, sqlalchemy, psycopg, jwt, httpx, pwdlib, uvicorn" >/dev/null 2>&1; then
     log "Installing Python backend dependencies..."
     "$PYTHON_BIN" -m pip install -r "$PY_BACKEND_DIR/requirements.txt"
   fi
 }
 
 seed_python_backend() {
-  # First-time bootstrap: if the SQLite DB file does not yet exist, generate
-  # the legacy static bundle from server/data and load it. Once the DB is
-  # populated it becomes authoritative; build-data prefers DB-driven export.
-  local db_path
-  if [[ "$PY_BACKEND_DB_URL" == sqlite:///* ]]; then
-    db_path="${PY_BACKEND_DB_URL#sqlite:///}"
-  else
-    db_path=""
-  fi
-
-  if [[ -n "$db_path" && -f "$db_path" ]]; then
-    return 0
-  fi
-
+  # Generate the legacy static seed bundle when it is missing, then seed with
+  # --if-empty so an existing (possibly partially-created) SQLite file is not
+  # mistaken for a populated database. Once the DB has books it becomes
+  # authoritative; build-data prefers DB-driven export.
   if [[ ! -f "$APP_DIR/public/data/books.json" ]]; then
-    log "Generating legacy static seed bundle..."
-    (cd "$APP_DIR" && BUILD_DATA_FORCE_LEGACY=1 npm run build:data)
+    log "Generating static seed bundle..."
+    # Prefer a populated database when one already exists; build-data falls
+    # back to the legacy server modules for a fresh checkout.
+    (cd "$APP_DIR" && npm run build:data)
   fi
-  log "Seeding Python backend database..."
+  log "Seeding Python backend database if empty..."
   PYTHONPATH="$PY_BACKEND_DIR" "$PYTHON_BIN" -m api.seed \
     --db-url "$PY_BACKEND_DB_URL" \
-    --data-dir "$APP_DIR/public/data"
+    --data-dir "$APP_DIR/public/data" \
+    --if-empty
 }
 
 start_python_backend() {
@@ -149,7 +143,7 @@ start_python_backend() {
   (
     cd "$PY_BACKEND_DIR"
     nohup env PYTHONPATH="$PY_BACKEND_DIR" DATABASE_URL="$PY_BACKEND_DB_URL" \
-      JWT_SECRET="$PY_BACKEND_JWT_SECRET" \
+      JWT_SECRET="$PY_BACKEND_JWT_SECRET" CORS_ORIGINS="$PY_BACKEND_CORS_ORIGINS" \
       "$PYTHON_BIN" -m uvicorn api.app:app --host "$PY_BACKEND_HOST" --port "$PY_BACKEND_PORT" \
       < /dev/null > "$PY_BACKEND_LOG_FILE" 2>&1 &
     echo $!
@@ -259,8 +253,9 @@ start_all() {
 }
 
 start_static_only() {
-  # Static-only mode for offline / Netlify-style demos.
-  (cd "$APP_DIR" && BUILD_DATA_FORCE_LEGACY=1 npm run build:data)
+  # Static-only mode for offline / Netlify-style demos. Prefer the local
+  # database when it is populated; build-data falls back to legacy modules.
+  (cd "$APP_DIR" && npm run build:data)
   VITE_API_BASE_URL="" start_frontend
   log ""
   log "经史舆图 启动完成（纯静态前端）"
@@ -303,6 +298,7 @@ Environment overrides:
   PY_BACKEND_PORT   default: 8000
   PY_BACKEND_DB_URL default: sqlite:///backend/.data/content.db
   JWT_SECRET        default: dev-only-change-me
+  CORS_ORIGINS      default: local frontend origins for the configured port
   VITE_API_BASE_URL default: http://PY_BACKEND_HOST:PY_BACKEND_PORT
 USAGE
 }

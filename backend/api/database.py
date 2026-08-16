@@ -12,7 +12,7 @@ from .models import Base
 from .schema import migrate_schema
 
 
-DEFAULT_DATABASE_URL = "sqlite:///backend/.data/content.db"
+DEFAULT_DATABASE_URL = f"sqlite:///{Path(__file__).resolve().parents[1] / '.data' / 'content.db'}"
 
 
 def get_database_url(db_url: str | None = None) -> str:

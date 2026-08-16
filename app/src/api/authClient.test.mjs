@@ -42,6 +42,14 @@ test('me sends bearer token', async () => {
   assert.equal(calls[0][1].headers.Authorization, 'Bearer token-abc');
 });
 
+test('stored user is ignored when the token is missing', () => {
+  const storage = memoryStorage();
+  storage.setItem('jingshi.auth.v1.user', '{"email":"ghost@example.com"}');
+  const client = createAuthClient({ storage });
+
+  assert.equal(client.getStoredUser(), null);
+});
+
 test('logout clears session storage', () => {
   const storage = memoryStorage();
   storage.setItem('jingshi.auth.v1.token', 'token-abc');
@@ -65,6 +73,68 @@ test('register surfaces backend errors', async () => {
     () => client.register('reader@example.com', 'correct horse battery staple'),
     /Email already registered/,
   );
+});
+
+test('OAuth provider status and start URL use the configured API origin', async () => {
+  const assigned = [];
+  const client = createAuthClient({
+    apiBaseUrl: 'https://api.example.com/',
+    storage: memoryStorage(),
+    location: { assign: url => assigned.push(url), hash: '', pathname: '/', search: '' },
+    fetchImpl: async () => jsonResponse({
+      providers: [
+        { id: 'qq', label: 'QQ', enabled: true },
+        { id: 'wechat', label: '微信', enabled: false },
+      ],
+    }),
+  });
+
+  const providers = await client.getOAuthProviders();
+  client.startOAuth('qq');
+
+  assert.equal(providers[0].enabled, true);
+  assert.equal(client.getOAuthStartUrl('wechat'), 'https://api.example.com/api/auth/oauth/wechat/start');
+  assert.deepEqual(assigned, ['https://api.example.com/api/auth/oauth/qq/start']);
+});
+
+test('OAuth callback stores local token, loads user, and removes token from URL', async () => {
+  const storage = memoryStorage();
+  const replacements = [];
+  const calls = [];
+  const client = createAuthClient({
+    apiBaseUrl: 'https://api.example.com',
+    storage,
+    location: {
+      hash: '#oauth_access_token=local-jwt&oauth_provider=qq',
+      pathname: '/reader',
+      search: '?book=shiji',
+    },
+    history: { replaceState: (...args) => replacements.push(args) },
+    fetchImpl: async (url, options) => {
+      calls.push([url, options]);
+      return jsonResponse({ id: 'u1', email: null, displayName: '司马读者', provider: 'qq', role: 'user', isActive: true });
+    },
+  });
+
+  const user = await client.consumeOAuthCallback();
+
+  assert.equal(user.displayName, '司马读者');
+  assert.equal(storage.getItem('jingshi.auth.v1.token'), 'local-jwt');
+  assert.equal(calls[0][1].headers.Authorization, 'Bearer local-jwt');
+  assert.equal(replacements[0][2], '/reader?book=shiji');
+});
+
+test('OAuth callback error is removed from URL and surfaced', async () => {
+  const replacements = [];
+  const client = createAuthClient({
+    apiBaseUrl: 'https://api.example.com',
+    storage: memoryStorage(),
+    location: { hash: '#oauth_error=%E7%94%A8%E6%88%B7%E5%8F%96%E6%B6%88', pathname: '/', search: '' },
+    history: { replaceState: (...args) => replacements.push(args) },
+  });
+
+  await assert.rejects(() => client.consumeOAuthCallback(), /用户取消/);
+  assert.equal(replacements[0][2], '/');
 });
 
 function memoryStorage() {

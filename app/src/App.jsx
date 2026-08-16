@@ -1,16 +1,16 @@
-import { useMemo, useReducer, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useMemo, useReducer, useEffect, useRef, useState } from 'react';
 import TopNav from './components/TopNav';
 import ReaderPane from './components/ReaderPane';
-import MapPane from './components/MapPane';
 import Timeline from './components/Timeline';
 import ErrorBoundary from './components/ErrorBoundary';
-import AdminPanel from './components/AdminPanel';
-import { api } from './api/client';
+import { api, getDataSourceStatus, subscribeDataSourceStatus } from './api/client';
 import { createAdminClient } from './api/adminClient';
 import { authClient } from './api/authClient';
 import { getProgress, saveProgress } from './utils/storage';
 
 const PREFS_KEY = 'jingshi.prefs.v1';
+const MapPane = lazy(() => import('./components/MapPane'));
+const AdminPanel = lazy(() => import('./components/AdminPanel'));
 
 function loadPrefs() {
   try {
@@ -27,6 +27,10 @@ const savedBookId = legacyShijiBookIds.has(savedPrefs.bookId) ? 'shiji' : savedP
 
 const initialBookId = savedBookId || 'shiji';
 const initialProgress = getProgress(initialBookId);
+const initialMobileViewport = isMobileViewport();
+const initialTimelineCollapsed = initialMobileViewport
+  ? (typeof savedPrefs.timelineCollapsedMobile === 'boolean' ? savedPrefs.timelineCollapsedMobile : true)
+  : Boolean(savedPrefs.timelineCollapsed);
 
 const initialState = {
   bookId: initialBookId,
@@ -37,7 +41,7 @@ const initialState = {
   pendingSection: null,
   pendingParagraph: initialProgress?.paragraphId || null,
   textMode: 'both',
-  timelineCollapsed: savedPrefs.timelineCollapsed || false,
+  timelineCollapsed: initialTimelineCollapsed,
   vertical: false,
   theme: savedPrefs.theme || 'classic',
   layers: { places: true, routes: true, territories: true, provinces: true },
@@ -134,13 +138,32 @@ function reducer(state, action) {
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [authUser, setAuthUser] = useState(() => authClient.getStoredUser());
+  const [authError, setAuthError] = useState('');
   const [adminOpen, setAdminOpen] = useState(false);
+  const [adminDirty, setAdminDirty] = useState(false);
   const [dataVersion, setDataVersion] = useState(0);
   const [allBooks, setAllBooks] = useState([]);
   const [bookMeta, setBookMeta] = useState(null);
   const [chapter, setChapter] = useState(null);
   const [period, setPeriod] = useState(null);
   const [error, setError] = useState(null);
+  const [dataSourceStatus, setDataSourceStatus] = useState(getDataSourceStatus);
+
+  useEffect(() => subscribeDataSourceStatus(setDataSourceStatus), []);
+
+  useEffect(() => {
+    let active = true;
+    authClient.consumeOAuthCallback()
+      .then(user => {
+        if (active && user) setAuthUser(user);
+      })
+      .catch(err => {
+        if (active) setAuthError(err?.message || '第三方登录失败');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Theme sync
   useEffect(() => {
@@ -161,11 +184,14 @@ export default function App() {
   // Persist user preferences
   useEffect(() => {
     try {
+      const current = loadPrefs();
+      const timelineKey = isMobileViewport() ? 'timelineCollapsedMobile' : 'timelineCollapsed';
       localStorage.setItem(PREFS_KEY, JSON.stringify({
+        ...current,
         bookId: state.bookId,
         theme: state.theme,
         splitRatio: state.splitRatio,
-        timelineCollapsed: state.timelineCollapsed,
+        [timelineKey]: state.timelineCollapsed,
       }));
     } catch {
       // localStorage may be unavailable (private mode, quota); ignore
@@ -189,14 +215,47 @@ export default function App() {
     setChapter(null);
     setPeriod(null);
     const ctrl = new AbortController();
+    let active = true;
     api.getBook(state.bookId, { signal: ctrl.signal })
-      .then(b => setBookMeta(b))
-      .catch(e => { if (e.name !== 'AbortError') setError(e.message); });
-    return () => ctrl.abort();
+      .then(b => {
+        if (active) setBookMeta(b);
+      })
+      .catch(e => {
+        if (e.name === 'AbortError' || !active) return;
+        // The active book may have been deleted in the admin panel. Switch to
+        // the first remaining book instead of leaving the app on an error.
+        if (e.status === 404) {
+          api.listBooks()
+            .then(list => {
+              if (!active) return;
+              if (list.some(book => book.id === state.bookId)) {
+                setError(e.message);
+                return;
+              }
+              const nextBook = list[0] || null;
+              if (nextBook) {
+                dispatch({ type: 'selectBook', id: nextBook.id });
+              } else {
+                setError('书目为空，请先在后台导入内容');
+              }
+            })
+            .catch(() => {
+              if (active) setError(e.message);
+            });
+          return;
+        }
+        setError(e.message);
+      });
+    return () => {
+      active = false;
+      ctrl.abort();
+    };
   }, [state.bookId, dataVersion]);
 
-  const readingItems = useMemo(() => bookMeta?.articles || bookMeta?.chapters || [], [bookMeta]);
-  const isArticleBook = Boolean(bookMeta?.articles);
+  const readingItems = useMemo(() => [
+    ...(bookMeta?.articles || []).map(item => ({ ...item, kind: 'article' })),
+    ...(bookMeta?.chapters || []).map(item => ({ ...item, kind: 'chapter' })),
+  ], [bookMeta]);
 
   // Whenever bookMeta loads or chapter is null, ensure a reading item is selected.
   // Guard against stale bookMeta: only auto-select when bookMeta is for the
@@ -211,9 +270,11 @@ export default function App() {
 
   // Load chapter/article content when chapterId changes
   useEffect(() => {
-    if (!state.chapterId) return;
+    if (!state.chapterId || !bookMeta || bookMeta.id !== state.bookId) return;
+    const item = readingItems.find(readingItem => readingItem.id === state.chapterId);
+    if (!item) return;
     const ctrl = new AbortController();
-    const load = isArticleBook ? api.getArticle : api.getChapter;
+    const load = item.kind === 'article' ? api.getArticle : api.getChapter;
     load(state.bookId, state.chapterId, { signal: ctrl.signal })
       .then(c => {
         setChapter(c);
@@ -229,14 +290,17 @@ export default function App() {
       })
       .catch(e => { if (e.name !== 'AbortError') setError(e.message); });
     return () => ctrl.abort();
-  }, [state.chapterId, state.bookId, isArticleBook, state.pendingSection, state.pendingParagraph]);
+  }, [state.chapterId, state.bookId, bookMeta, readingItems, state.pendingSection, state.pendingParagraph]);
 
-  const paragraph = findParagraph(chapter, state.activeParagraph) || getFirstParagraph(chapter);
-  const activeSection = findSectionForParagraph(chapter, paragraph?.id);
-  const periodId = activeSection?.period || chapter?.period || null;
-  const currentYear = activeSection?.year || chapter?.year;
+  // Keep rendering the previous document out of the tree while a new
+  // chapter/article is loading; otherwise pickers and reader briefly disagree.
+  const activeChapter = chapter?.id === state.chapterId ? chapter : null;
+  const paragraph = findParagraph(activeChapter, state.activeParagraph) || getFirstParagraph(activeChapter);
+  const activeSection = findSectionForParagraph(activeChapter, paragraph?.id);
+  const periodId = activeSection?.period || activeChapter?.period || null;
+  const currentYear = activeSection?.year || activeChapter?.year;
   const currentTimelineItem = activeSection?.id || state.chapterId;
-  const mapChapter = chapter ? { ...chapter, paragraphs: getAllParagraphs(chapter) } : null;
+  const mapChapter = activeChapter ? { ...activeChapter, paragraphs: getAllParagraphs(activeChapter) } : null;
 
   useEffect(() => {
     if (!periodId) {
@@ -254,12 +318,16 @@ export default function App() {
   // Split-pane drag
   const dragRef = useRef(null);
   const onSplitDown = (e) => {
-    dragRef.current = { startX: e.clientX, startRatio: state.splitRatio, w: window.innerWidth };
+    if (e.button !== 0 && e.button !== undefined) return;
+    dragRef.current = { pointerId: e.pointerId, startX: e.clientX, startRatio: state.splitRatio, w: window.innerWidth };
     document.body.style.cursor = 'col-resize';
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    e.preventDefault();
   };
   useEffect(() => {
     const move = (e) => {
       if (!dragRef.current) return;
+      if (dragRef.current.pointerId !== undefined && e.pointerId !== dragRef.current.pointerId) return;
       const dx = e.clientX - dragRef.current.startX;
       dispatch({ type: 'setSplit', value: dragRef.current.startRatio + dx / dragRef.current.w });
     };
@@ -268,39 +336,31 @@ export default function App() {
       dragRef.current = null;
       document.body.style.cursor = '';
     };
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', stop);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
     window.addEventListener('blur', stop);
-    document.addEventListener('mouseleave', stop);
     return () => {
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', stop);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
       window.removeEventListener('blur', stop);
-      document.removeEventListener('mouseleave', stop);
     };
   }, []);
 
-  if (error) {
-    return <div style={{ padding: 40, fontFamily: 'var(--font-serif)' }}>
-      <h2>无法加载数据</h2>
-      <p>{error}</p>
-      <p style={{ fontSize: 13, color: '#6B5F4E' }}>若是本地开发，请先在 <code>app/</code> 目录下执行 <code>npm run build:data</code> 生成静态数据。</p>
-    </div>;
-  }
+  const retryData = () => {
+    api.useApi();
+    setError(null);
+    setDataVersion(version => version + 1);
+  };
 
-  if (!bookMeta) return <div className="loading">加载中…</div>;
+  const useOfflineData = () => {
+    api.useStatic();
+    setError(null);
+    setDataVersion(version => version + 1);
+  };
 
-  // Books picker shows all available books from the backend; the active book's
-  // chapter list comes from bookMeta (which is bookId-specific).
-  const books = allBooks.length
-    ? allBooks.map(b => ({
-        ...b,
-        chapters: b.id === bookMeta.id ? (bookMeta.chapters || bookMeta.articles || []) : [],
-        itemKind: b.id === bookMeta.id && bookMeta.articles ? 'article' : 'chapter',
-      }))
-    : [{ id: bookMeta.id, title: bookMeta.title, dynasty: bookMeta.dynasty, chapters: readingItems, itemKind: isArticleBook ? 'article' : 'chapter' }];
-
-  const auth = {
+  const auth = useMemo(() => ({
     user: authUser,
     login: async (email, password) => {
       const result = await authClient.login(email, password);
@@ -308,13 +368,47 @@ export default function App() {
       return result;
     },
     register: (email, password) => authClient.register(email, password),
+    getOAuthProviders: () => authClient.getOAuthProviders(),
+    startOAuth: (provider) => authClient.startOAuth(provider),
     logout: () => {
+      if (adminOpen && adminDirty && !window.confirm('后台有尚未保存的修改，确定退出登录吗？')) return;
       authClient.logout();
       setAuthUser(null);
       setAdminOpen(false);
+      setAdminDirty(false);
     },
     openAdmin: () => setAdminOpen(true),
-  };
+  }), [adminDirty, adminOpen, authUser]);
+
+  if (error) {
+    return <div className="app-error" role="alert">
+      <h2>无法加载数据</h2>
+      <p>{error}</p>
+      <p>请检查网络后重试；本地开发还可在 <code>app/</code> 目录执行 <code>npm run build:data</code>。</p>
+      <div className="app-error__actions">
+        <button type="button" onClick={retryData}>重试</button>
+        {dataSourceStatus.apiConfigured && <button type="button" onClick={useOfflineData}>使用离线数据</button>}
+      </div>
+    </div>;
+  }
+
+  if (!bookMeta || bookMeta.id !== state.bookId) return <div className="loading">加载中…</div>;
+
+  // Books picker shows all available books from the backend; the active book's
+  // chapter list comes from bookMeta (which is bookId-specific). Books may
+  // contain chapters, articles, or both, so decorate every item with its kind.
+  const decorateItems = (items, kind) => (items || []).map(item => ({ ...item, kind }));
+  const activeBookItems = decorateItems(bookMeta.articles, 'article')
+    .concat(decorateItems(bookMeta.chapters, 'chapter'));
+  const books = allBooks.length
+    ? allBooks.map(b => ({
+        ...b,
+        chapters: b.id === bookMeta.id ? activeBookItems : [],
+        itemKind: b.id === bookMeta.id
+          ? (bookMeta.articles?.length ? 'article' : 'chapter')
+          : (b.articleCount > 0 ? 'article' : 'chapter'),
+      }))
+    : [{ id: bookMeta.id, title: bookMeta.title, dynasty: bookMeta.dynasty, chapters: activeBookItems, itemKind: bookMeta.articles ? 'article' : 'chapter' }];
 
   const adminClient = createAdminClient({
     getToken: authClient.getToken,
@@ -323,24 +417,59 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div className="app">
-        <TopNav state={state} dispatch={dispatch} books={books} auth={auth} />
+        <TopNav state={state} dispatch={dispatch} books={books} auth={auth} catalogVersion={dataVersion} />
+        {authError && (
+          <div className="auth-error-banner" role="alert">
+            <span>{authError}</span>
+            <button type="button" onClick={() => setAuthError('')}>关闭</button>
+          </div>
+        )}
+        {dataSourceStatus.fallback && (
+          <div className="data-source-banner" role="status">
+            <span>后端暂不可用，当前使用离线数据。</span>
+            <button type="button" onClick={retryData}>重试后端</button>
+          </div>
+        )}
         {adminOpen && authUser?.role === 'admin' && (
-          <AdminPanel
-            adminClient={adminClient}
-            onClose={() => setAdminOpen(false)}
-            onChanged={() => setDataVersion(version => version + 1)}
-          />
+          <Suspense fallback={<div className="admin-panel admin-panel--loading">正在加载后台…</div>}>
+            <AdminPanel
+              adminClient={adminClient}
+              onClose={() => {
+                setAdminOpen(false);
+                setAdminDirty(false);
+              }}
+              onChanged={() => setDataVersion(version => version + 1)}
+              onDirtyChange={setAdminDirty}
+            />
+          </Suspense>
         )}
         <div className="splitpane" style={{ '--split': `${state.splitRatio * 100}%` }}>
           <div className="splitpane__left">
             <ErrorBoundary label="阅读器渲染错误">
-              <ReaderPane chapter={chapter} state={{ ...state, bookTitle: bookMeta.title, dynasty: bookMeta.dynasty }} dispatch={dispatch} />
+              <ReaderPane chapter={activeChapter} state={{ ...state, bookTitle: bookMeta.title, dynasty: bookMeta.dynasty }} dispatch={dispatch} />
             </ErrorBoundary>
           </div>
-          <div className="splitpane__gutter" onMouseDown={onSplitDown} />
+          <div
+            className="splitpane__gutter"
+            role="separator"
+            aria-label="调整阅读区与地图宽度"
+            aria-orientation="vertical"
+            aria-valuemin="25"
+            aria-valuemax="65"
+            aria-valuenow={Math.round(state.splitRatio * 100)}
+            tabIndex={0}
+            onPointerDown={onSplitDown}
+            onKeyDown={event => {
+              if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+              event.preventDefault();
+              dispatch({ type: 'setSplit', value: state.splitRatio + (event.key === 'ArrowRight' ? 0.02 : -0.02) });
+            }}
+          />
           <div className="splitpane__right">
             <ErrorBoundary label="地图渲染错误">
-              <MapPane paragraph={paragraph} state={state} dispatch={dispatch} chapter={mapChapter} period={period} />
+              <Suspense fallback={<div className="map map--loading">加载地图组件…</div>}>
+                <MapPane key={`map-${dataSourceStatus.mode}`} paragraph={paragraph} state={state} dispatch={dispatch} chapter={mapChapter} period={period} />
+              </Suspense>
             </ErrorBoundary>
           </div>
         </div>
@@ -362,8 +491,10 @@ export default function App() {
 
 function getAllParagraphs(doc) {
   if (!doc) return [];
-  if (doc.paragraphs) return doc.paragraphs;
-  return (doc.sections || []).flatMap(section => section.paragraphs || []);
+  if (Array.isArray(doc.paragraphs)) return doc.paragraphs;
+  return (Array.isArray(doc.sections) ? doc.sections : []).flatMap(
+    section => (Array.isArray(section?.paragraphs) ? section.paragraphs : [])
+  );
 }
 
 function getFirstParagraph(doc) {
@@ -376,11 +507,15 @@ function findParagraph(doc, paragraphId) {
 }
 
 function findSection(doc, sectionId) {
-  if (!doc?.sections || !sectionId) return null;
+  if (!Array.isArray(doc?.sections) || !sectionId) return null;
   return doc.sections.find(section => section.id === sectionId) || null;
 }
 
 function findSectionForParagraph(doc, paragraphId) {
-  if (!doc?.sections || !paragraphId) return null;
-  return doc.sections.find(section => (section.paragraphs || []).some(p => p.id === paragraphId)) || null;
+  if (!Array.isArray(doc?.sections) || !paragraphId) return null;
+  return doc.sections.find(section => (Array.isArray(section?.paragraphs) ? section.paragraphs : []).some(p => p.id === paragraphId)) || null;
+}
+
+function isMobileViewport() {
+  return typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
 }

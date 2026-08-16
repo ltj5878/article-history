@@ -1,5 +1,7 @@
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 import os
+import secrets
 from uuid import uuid4
 
 import jwt
@@ -12,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .database import session_scope
-from .models import User
+from .models import OAuthIdentity, User
 
 JWT_ALGORITHM = "HS256"
 DEFAULT_ACCESS_TOKEN_MINUTES = 30
@@ -34,7 +36,10 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    email: str
+    email: str | None = None
+    display_name: str | None = Field(default=None, alias="displayName")
+    avatar_url: str | None = Field(default=None, alias="avatarUrl")
+    provider: str | None = None
     role: str
     is_active: bool = Field(alias="isActive")
 
@@ -83,6 +88,64 @@ class AuthRepository:
 
     def get_user(self, user_id: str) -> User | None:
         return self.session.get(User, user_id)
+
+    def get_oauth_identity(self, user_id: str) -> OAuthIdentity | None:
+        return self.session.scalar(select(OAuthIdentity).where(OAuthIdentity.user_id == user_id))
+
+    def get_or_create_oauth_user(
+        self,
+        provider: str,
+        subject: str,
+        display_name: str | None = None,
+        avatar_url: str | None = None,
+    ) -> tuple[User, OAuthIdentity]:
+        identity = self.session.scalar(
+            select(OAuthIdentity).where(
+                OAuthIdentity.provider == provider,
+                OAuthIdentity.subject == subject,
+            )
+        )
+        if identity:
+            identity.display_name = display_name or identity.display_name
+            identity.avatar_url = avatar_url or identity.avatar_url
+            user = self.get_user(identity.user_id)
+            if not user:
+                raise RuntimeError("OAuth identity references a missing user")
+            return user, identity
+
+        digest = sha256(f"{provider}:{subject}".encode()).hexdigest()
+        user = User(
+            id=str(uuid4()),
+            email=f"{digest}@{provider}.oauth.invalid",
+            password_hash=hash_password(secrets.token_urlsafe(48)),
+            role="user",
+            is_active=True,
+        )
+        identity = OAuthIdentity(
+            user_id=user.id,
+            provider=provider,
+            subject=subject,
+            display_name=display_name,
+            avatar_url=avatar_url,
+        )
+        try:
+            with self.session.begin_nested():
+                self.session.add_all([user, identity])
+                self.session.flush()
+            return user, identity
+        except IntegrityError:
+            identity = self.session.scalar(
+                select(OAuthIdentity).where(
+                    OAuthIdentity.provider == provider,
+                    OAuthIdentity.subject == subject,
+                )
+            )
+            if not identity:
+                raise
+            user = self.get_user(identity.user_id)
+            if not user:
+                raise RuntimeError("OAuth identity references a missing user")
+            return user, identity
 
 
 def normalize_email(email: str) -> str:
@@ -145,5 +208,13 @@ def auth_dependencies(db_url: str, jwt_secret: str | None):
     return get_current_user, require_admin
 
 
-def to_user_response(user: User) -> UserResponse:
-    return UserResponse(id=user.id, email=user.email, role=user.role, isActive=user.is_active)
+def to_user_response(user: User, identity: OAuthIdentity | None = None) -> UserResponse:
+    return UserResponse(
+        id=user.id,
+        email=None if identity else user.email,
+        displayName=identity.display_name if identity else None,
+        avatarUrl=identity.avatar_url if identity else None,
+        provider=identity.provider if identity else None,
+        role=user.role,
+        isActive=user.is_active,
+    )

@@ -34,7 +34,7 @@ const importTemplate = JSON.stringify({
   ],
 }, null, 2);
 
-export default function AdminPanel({ adminClient, onClose, onChanged }) {
+export default function AdminPanel({ adminClient, onClose, onChanged, onDirtyChange }) {
   const [books, setBooks] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [bookForm, setBookForm] = useState(emptyBook);
@@ -44,7 +44,10 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
   const [units, setUnits] = useState([]);
   const [selectedUnitKey, setSelectedUnitKey] = useState('');
   const [documentText, setDocumentText] = useState('');
+  const [documentBaseline, setDocumentBaseline] = useState('');
   const [documentStatus, setDocumentStatus] = useState('');
+  const [importBaseline, setImportBaseline] = useState(importTemplate);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const unitsRequestRef = useRef(0);
@@ -52,6 +55,12 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
 
   const selectedBook = books.find(book => book.id === selectedId) || null;
   const selectedUnit = units.find(unit => unitKey(unit) === selectedUnitKey) || null;
+  const bookDirty = !sameForm(bookForm, selectedBook ? fromBook(selectedBook) : emptyBook);
+  const chapterDirty = Object.values(chapterForm).some(value => value !== '');
+  const documentDirty = documentText !== documentBaseline;
+  const importDirty = importText !== importBaseline;
+  const hasContextUnsaved = bookDirty || chapterDirty || documentDirty;
+  const hasUnsaved = hasContextUnsaved || importDirty;
 
   async function loadBooks(nextSelectedId = selectedId, isCurrent = () => true) {
     try {
@@ -61,6 +70,7 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
       const nextSelected = list.find(book => book.id === nextSelectedId) || list[0] || null;
       setSelectedId(nextSelected?.id || '');
       setBookForm(nextSelected ? fromBook(nextSelected) : emptyBook);
+      setDeleteConfirmOpen(false);
       if (nextSelected) {
         await loadUnits(nextSelected.id, '');
       } else {
@@ -79,6 +89,7 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
     setUnits([]);
     setSelectedUnitKey('');
     setDocumentText('');
+    setDocumentBaseline('');
     setDocumentStatus('');
   }
 
@@ -89,6 +100,7 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
     setUnits([]);
     setSelectedUnitKey('');
     setDocumentText('');
+    setDocumentBaseline('');
     setDocumentStatus('');
     try {
       const list = await adminClient.listUnits(bookId);
@@ -100,6 +112,7 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
         await loadDocument(bookId, nextUnit, requestId);
       } else {
         setDocumentText('');
+        setDocumentBaseline('');
       }
     } catch (err) {
       if (requestId === unitsRequestRef.current) {
@@ -125,18 +138,35 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
       requestId !== documentRequestRef.current
       || (unitsRequestId !== null && unitsRequestId !== unitsRequestRef.current)
     ) return false;
-    setDocumentText(JSON.stringify(document, null, 2));
+    const nextText = JSON.stringify(document, null, 2);
+    setDocumentText(nextText);
+    setDocumentBaseline(nextText);
     return true;
   }
 
   function pickBook(bookId) {
+    if (bookId === selectedId) return;
+    if (!confirmDiscard(hasContextUnsaved)) return;
     const book = books.find(item => item.id === bookId);
     setSelectedId(bookId);
     setBookForm(book ? fromBook(book) : emptyBook);
+    setChapterForm(emptyChapter);
+    setDeleteConfirmOpen(false);
     void loadUnits(bookId);
   }
 
+  function pickNewBook() {
+    if (!confirmDiscard(hasContextUnsaved)) return;
+    setSelectedId('');
+    setBookForm(emptyBook);
+    setChapterForm(emptyChapter);
+    setDeleteConfirmOpen(false);
+    clearUnits();
+  }
+
   async function pickUnit(key) {
+    if (key === selectedUnitKey) return;
+    if (!confirmDiscard(documentDirty)) return;
     const unit = units.find(item => unitKey(item) === key);
     setSelectedUnitKey(key);
     if (!selectedBook || !unit) return;
@@ -163,6 +193,22 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!hasUnsaved) return;
+    const onBeforeUnload = event => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [hasUnsaved]);
+
+  useEffect(() => {
+    onDirtyChange?.(hasUnsaved);
+  }, [hasUnsaved, onDirtyChange]);
+
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   async function submitBook(event) {
     event.preventDefault();
@@ -193,6 +239,7 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
     setImportStatus('');
     try {
       await adminClient.deleteBook(selectedBook.id);
+      setDeleteConfirmOpen(false);
       await loadBooks('');
       onChanged?.();
     } catch (err) {
@@ -212,7 +259,6 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
       await adminClient.addChapter(selectedBook.id, cleanChapterPayload(chapterForm));
       setChapterForm(emptyChapter);
       await loadBooks(selectedBook.id);
-      await loadUnits(selectedBook.id);
       onChanged?.();
     } catch (err) {
       setError(err?.message || '新增章节失败');
@@ -233,6 +279,7 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
       await loadBooks(payload.books?.[0]?.id || selectedId);
       onChanged?.();
       setImportStatus(`已导入 ${result.booksImported} 本古籍，${result.readingUnitsImported} 篇内容`);
+      setImportBaseline(importText);
     } catch (err) {
       setError(err instanceof SyntaxError ? '内容包 JSON 格式错误' : (err?.message || '导入内容包失败'));
     } finally {
@@ -249,7 +296,9 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
     try {
       const document = JSON.parse(documentText);
       const saved = await adminClient.updateDocument(selectedBook.id, selectedUnit.kind, selectedUnit.id, document);
-      setDocumentText(JSON.stringify(saved, null, 2));
+      const savedText = JSON.stringify(saved, null, 2);
+      setDocumentText(savedText);
+      setDocumentBaseline(savedText);
       await loadUnits(selectedBook.id, selectedUnitKey);
       onChanged?.();
       setDocumentStatus('阅读文档已保存');
@@ -260,6 +309,11 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
     }
   }
 
+  function requestClose() {
+    if (!confirmDiscard(hasUnsaved)) return;
+    onClose();
+  }
+
   return (
     <div className="admin-panel" role="dialog" aria-modal="true">
       <div className="admin-panel__head">
@@ -267,14 +321,14 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
           <div className="admin-panel__eyebrow">管理员</div>
           <h2>内容维护</h2>
         </div>
-        <button type="button" className="admin-panel__close" onClick={onClose}>关闭</button>
+        <button type="button" className="admin-panel__close" onClick={requestClose}>关闭</button>
       </div>
 
       {error && <div className="admin-panel__error">{error}</div>}
 
       <div className="admin-panel__body">
         <div className="admin-panel__list">
-          <button type="button" className={!selectedId ? 'is-active' : ''} onClick={() => { setSelectedId(''); setBookForm(emptyBook); clearUnits(); }}>
+          <button type="button" className={!selectedId ? 'is-active' : ''} onClick={pickNewBook}>
             新增古籍
           </button>
           {books.map(book => (
@@ -285,7 +339,7 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
               onClick={() => pickBook(book.id)}
             >
               <span>{book.title}</span>
-              <small>{book.chapterCount || book.articleCount || 0} 篇</small>
+              <small>{(book.chapterCount || 0) + (book.articleCount || 0)} 篇</small>
             </button>
           ))}
         </div>
@@ -303,8 +357,18 @@ export default function AdminPanel({ adminClient, onClose, onChanged }) {
             <TextField label="简介" value={bookForm.description} onChange={value => setBookForm({ ...bookForm, description: value })} />
             <div className="admin-form__actions">
               <button type="submit" disabled={busy}>{selectedBook ? '保存古籍' : '创建古籍'}</button>
-              {selectedBook && <button type="button" className="is-danger" disabled={busy} onClick={deleteBook}>删除</button>}
+              {selectedBook && <button type="button" className="is-danger" disabled={busy} onClick={() => setDeleteConfirmOpen(true)}>删除</button>}
             </div>
+            {deleteConfirmOpen && selectedBook && (
+              <div className="admin-delete-confirm" role="alertdialog" aria-modal="true" aria-labelledby="delete-book-title">
+                <strong id="delete-book-title">确认删除《{selectedBook.title}》？</strong>
+                <p>关联章节和阅读文档也会被删除，此操作无法撤销。</p>
+                <div className="admin-form__actions">
+                  <button type="button" className="is-danger" disabled={busy} onClick={deleteBook}>确认永久删除</button>
+                  <button type="button" disabled={busy} onClick={() => setDeleteConfirmOpen(false)}>取消</button>
+                </div>
+              </div>
+            )}
           </form>
 
           {selectedBook && (
@@ -414,4 +478,12 @@ function cleanChapterPayload(form) {
 
 function unitKey(unit) {
   return `${unit.kind}:${unit.id}`;
+}
+
+function sameForm(left, right) {
+  return Object.keys(right).every(key => left[key] === right[key]);
+}
+
+function confirmDiscard(hasUnsaved) {
+  return !hasUnsaved || window.confirm('有尚未保存的修改，确定放弃这些修改吗？');
 }

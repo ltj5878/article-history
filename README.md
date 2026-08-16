@@ -222,6 +222,8 @@ Python 后端提供基础身份接口：
 
 项目仍可作为纯静态站点部署，也可以作为完整前后端系统部署。完整部署时，Netlify 只托管 React/Vite 前端，Python FastAPI 后端部署在单独的 Python 托管平台，数据库使用 Postgres/Supabase。
 
+当前线上资源、完整复现步骤、验证命令和故障处理经验见 [`docs/DEPLOYMENT_RUNBOOK.md`](docs/DEPLOYMENT_RUNBOOK.md)。下次发布请先按该 Runbook 的检查清单执行。
+
 ### 本地试构建
 
 ```bash

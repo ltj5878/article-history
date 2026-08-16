@@ -47,6 +47,40 @@ test('builds article-based books without legacy chapter files', () => {
   assert.equal(result.bookMetas.get('zuozhuan').chapters[0].id, 'changshao');
 });
 
+test('keeps both chapters and articles when a legacy module defines both', () => {
+  const result = buildStaticBookData([
+    {
+      mod: {
+        book: { id: 'shiji', title: '史记', dynasty: '西汉' },
+        eraEvents: [],
+        chapters: [{ id: 'intro', title: '导读', subtitle: null, year: -100, paragraphs: [] }],
+        articles: [
+          {
+            id: 'xiangyu-benji',
+            title: '项羽本纪',
+            subtitle: '卷七',
+            sections: [
+              {
+                id: 'origin',
+                title: '少年',
+                year: -222,
+                paragraphs: [{ id: 'p1', original: '项籍者，下相人也。' }],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ]);
+
+  assert.deepEqual(result.bookMetas.get('shiji').chapters.map(c => c.id), ['intro']);
+  assert.deepEqual(result.bookMetas.get('shiji').articles.map(a => a.id), ['xiangyu-benji']);
+  assert.equal(result.bookMetas.get('shiji').chapterCount, 1);
+  assert.equal(result.bookMetas.get('shiji').articleCount, 1);
+  assert.ok(result.chapterDocs.has('shiji/intro'));
+  assert.ok(result.articleDocs.has('shiji/xiangyu-benji'));
+});
+
 test('shiji timeline merges duplicate event labels for the same year', () => {
   const seen = new Set();
   for (const event of shijiEvents) {

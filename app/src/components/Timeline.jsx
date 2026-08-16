@@ -105,8 +105,9 @@ export default function Timeline({ events, currentYear, currentChapter, collapse
     if (e.button !== 0 && e.button !== undefined) return;
     // Don't start drag if user pressed inside an event button
     if (e.target.closest('.timeline__event')) return;
-    dragRef.current = { startX: e.clientX, startPan: pan, moved: false };
+    dragRef.current = { pointerId: e.pointerId, startX: e.clientX, startPan: pan, moved: false };
     setDragging(true);
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     e.preventDefault();
   };
 
@@ -114,6 +115,7 @@ export default function Timeline({ events, currentYear, currentChapter, collapse
     if (!dragging) return;
     const onMove = (e) => {
       if (!dragRef.current) return;
+      if (dragRef.current.pointerId !== undefined && e.pointerId !== dragRef.current.pointerId) return;
       const dx = e.clientX - dragRef.current.startX;
       if (Math.abs(dx) > 3) dragRef.current.moved = true;
       setPan(clampPan(dragRef.current.startPan + dx));
@@ -122,11 +124,13 @@ export default function Timeline({ events, currentYear, currentChapter, collapse
       setDragging(false);
       dragRef.current = null;
     };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
     return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
     };
   }, [dragging, clampPan]);
 
@@ -176,14 +180,14 @@ export default function Timeline({ events, currentYear, currentChapter, collapse
       className={'timeline' + (dragging ? ' is-dragging' : '') + (collapsed ? ' is-collapsed' : '')}
       style={{ '--lanes': totalLanes }}
       ref={viewportRef}
-      onMouseDown={onPointerDown}
+      onPointerDown={onPointerDown}
       onWheel={onWheel}
     >
       <button
         type="button"
         className="timeline__toggle"
         title={collapsed ? '展开时间轴' : '收起时间轴'}
-        onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
           onToggleCollapsed();
@@ -220,7 +224,7 @@ export default function Timeline({ events, currentYear, currentChapter, collapse
               '--lane': ev.lane,
             }}
             title={`${ev.label} · ${ev.year < 0 ? `公元前 ${-ev.year}` : ev.year} 年`}
-            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               // Suppress click if user dragged

@@ -19,10 +19,22 @@ function createStateLabelEl(name, color) {
   return el;
 }
 
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[ch]);
+}
+
 // Faction-colored marker glyphs (rectangles for capitals, diamonds for battles, triangles for passes)
 function createCityMarkerEl(type, name, role) {
   const el = document.createElement('div');
   el.className = 'map-city-marker';
+  const safeName = escapeHtml(name);
+  const safeRole = escapeHtml(role);
   let glyph;
   switch (type) {
     case 'capital':
@@ -44,8 +56,8 @@ function createCityMarkerEl(type, name, role) {
     <div class="city-marker__inner">
       ${glyph}
       <div class="city-marker__label">
-        <span class="city-marker__name">${name}</span>
-        ${role ? `<span class="city-marker__role">${role}</span>` : ''}
+        <span class="city-marker__name">${safeName}</span>
+        ${safeRole ? `<span class="city-marker__role">${safeRole}</span>` : ''}
       </div>
     </div>
   `;
@@ -59,11 +71,8 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
   const mapInstance = useRef(null);
   const markers = useRef({ states: [], cities: [], pois: [], provinces: [] });
   const [mapReady, setMapReady] = useState(false);
-  const [replayKey, setReplayKey] = useState(0);
-  const animKey = `${paragraph?.id || 'none'}:${replayKey}`;
-  const { progress: animProgress, playing, togglePlay, scrub } = useRouteAnimation({
+  const { progress: animProgress, playing, togglePlay, scrub, replay } = useRouteAnimation({
     paragraphId: paragraph?.id,
-    replayKey,
   });
 
   // Show ALL place entities from the entire chapter (across all paragraphs), not
@@ -77,7 +86,7 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
     const all = [];
     const allParas = chapter?.paragraphs || (paragraph ? [paragraph] : []);
     for (const p of allParas) {
-      for (const e of (p.entities || [])) {
+      for (const e of (Array.isArray(p.entities) ? p.entities : [])) {
         if (e.type !== 'place' || !e.lat || !e.lng) continue;
         // Skip if a previous entity with same text is within threshold
         const dup = all.find(prev =>
@@ -96,7 +105,7 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
   // Match is name+proximity so an entity that's been deduplicated up to a
   // sibling paragraph still gets marked active.
   const activeEntityKeys = useMemo(() => {
-    return (paragraph?.entities || [])
+    return (Array.isArray(paragraph?.entities) ? paragraph.entities : [])
       .filter(e => e.type === 'place' && e.lat && e.lng)
       .map(e => ({ text: e.text, lat: e.lat, lng: e.lng }));
   }, [paragraph]);
@@ -295,52 +304,67 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
 
     if (!state.layers.provinces) return;
 
-    // Fetch province centers and add labels
+    const addProvinceLabels = (geo) => {
+      if (mapInstance.current !== map) return;
+      for (const f of geo?.features || []) {
+        const { name_short, center_lng, center_lat } = f?.properties || {};
+        if (!name_short || !Number.isFinite(center_lng) || !Number.isFinite(center_lat)) continue;
+        const el = document.createElement('div');
+        el.className = 'province-label';
+        el.textContent = name_short;
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+          .setLngLat([center_lng, center_lat])
+          .addTo(map);
+        markers.current.provinces.push(marker);
+      }
+    };
+
+    // If MapLibre has already loaded the province source, read its in-memory
+    // GeoJSON. Otherwise fetch the same layer (API or static fallback) once.
     const src = map.getSource('china-provinces');
-    if (!src || !src._data) return;
-    const data = typeof src._data === 'string' ? null : src._data;
-    if (!data?.features) {
-      // Source data is a URL string (lazy-loaded). Fetch directly to read centers.
-      fetch(api.geoUrl('china_provinces'))
-        .then(r => r.json())
-        .then(geo => {
-          if (!state.layers.provinces) return;  // user toggled off while fetching
-          geo.features.forEach(f => {
-            const { name_short, center_lng, center_lat } = f.properties;
-            if (!name_short) return;
-            const el = document.createElement('div');
-            el.className = 'province-label';
-            el.textContent = name_short;
-            const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
-              .setLngLat([center_lng, center_lat])
-              .addTo(map);
-            markers.current.provinces.push(marker);
-          });
-        })
-        .catch(() => {});
+    const loadedData = src && typeof src._data === 'object' ? src._data : null;
+    if (loadedData?.features) {
+      addProvinceLabels(loadedData);
+      return;
     }
+
+    let cancelled = false;
+    fetch(api.geoUrl('china_provinces'))
+      .then(r => {
+        if (!r.ok) throw new Error(`Province layer request failed: ${r.status}`);
+        return r.json();
+      })
+      .then(geo => {
+        if (!cancelled && state.layers.provinces) addProvinceLabels(geo);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [state.layers.provinces, mapReady]);
 
   // Update territory polygons + state labels when period or layer toggle changes
   useEffect(() => {
     const map = mapInstance.current;
-    if (!map || !mapReady || !period) return;
+    if (!map || !mapReady) return;
 
-    // Clear old state-name markers
+    // Clear old state-name markers even when the period disappears, so stale
+    // labels never outlive their data source.
     markers.current.states.forEach(m => m.remove());
     markers.current.states = [];
 
-    if (!state.layers.territories) {
-      const src = map.getSource('territories');
-      if (src) src.setData({ type: 'FeatureCollection', features: [] });
+    const src = map.getSource('territories');
+    if (!src) return;
+    if (!period || !state.layers.territories) {
+      src.setData({ type: 'FeatureCollection', features: [] });
       return;
     }
 
-    const src = map.getSource('territories');
-    if (src) src.setData(createTerritoryData(period.states));
+    src.setData(createTerritoryData(period.states));
 
     // Add state-name markers at centroid
-    period.states.forEach(s => {
+    for (const s of (Array.isArray(period.states) ? period.states : [])) {
+      if (!Array.isArray(s.polygon) || s.polygon.length === 0) continue;
       const cLng = s.polygon.reduce((a, c) => a + c[0], 0) / s.polygon.length;
       const cLat = s.polygon.reduce((a, c) => a + c[1], 0) / s.polygon.length;
       const el = createStateLabelEl(s.name, s.color);
@@ -348,7 +372,7 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
         .setLngLat([cLng, cLat])
         .addTo(map);
       markers.current.states.push(marker);
-    });
+    }
   }, [period, state.layers.territories, mapReady]);
 
   // Update period base cities — these are also clickable (becomes selectable
@@ -356,14 +380,14 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
   // the current chapter's narrative entities.
   useEffect(() => {
     const map = mapInstance.current;
-    if (!map || !mapReady || !period) return;
+    if (!map || !mapReady) return;
 
     markers.current.cities.forEach(m => m.remove());
     markers.current.cities = [];
 
-    if (!state.layers.places) return;
+    if (!period || !state.layers.places) return;
 
-    period.cities.forEach(c => {
+    for (const c of (Array.isArray(period.cities) ? period.cities : [])) {
       // Skip cities that are already rendered as chapter POIs (proximity match
       // catches minor coord drift like 废丘/会稽 between periods.js and book data)
       const dup = placeEntities.find(e =>
@@ -391,8 +415,8 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
 
       // Vermillion ring around selected city
       if (state.selectedPlace?.text === c.name &&
-          Math.abs((state.selectedPlace.lat ?? 0) - c.lat) < 0.01 &&
-          Math.abs((state.selectedPlace.lng ?? 0) - c.lng) < 0.01) {
+          Math.abs((state.selectedPlace.lat ?? 0) - c.lat) < SAME_PLACE_THRESHOLD_DEG &&
+          Math.abs((state.selectedPlace.lng ?? 0) - c.lng) < SAME_PLACE_THRESHOLD_DEG) {
         const ring = document.createElement('div');
         ring.style.cssText = `
           position: absolute; top: 50%; left: 0; transform: translate(-14px, -50%);
@@ -412,7 +436,7 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
         .setLngLat([c.lng, c.lat])
         .addTo(map);
       markers.current.cities.push(marker);
-    });
+    }
   }, [period, state.layers.places, mapReady, placeEntities, state.selectedPlace, dispatch]);
 
   // Routes — re-evaluated on animProgress for play/scrub animation
@@ -422,7 +446,7 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
     const routesData = state.layers.routes ? (paragraph?.routes || []) : [];
     map.getSource('routes')?.setData(createRouteSourceData(routesData, animProgress));
     map.getSource('route-points')?.setData(animProgress >= 1 ? createRoutePointsData(routesData) : { type: 'FeatureCollection', features: [] });
-  }, [paragraph, state.layers.routes, mapReady, animKey, animProgress]);
+  }, [paragraph, state.layers.routes, mapReady, animProgress]);
 
   // (route animation managed by useRouteAnimation hook)
 
@@ -445,8 +469,11 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
       // is still visually emphasized.
       if (!isActive) el.classList.add('map-city-marker--dim');
 
-      // Vermillion ring around selected POI
-      if (state.selectedPlace?.text === e.text) {
+      // Vermillion ring around selected POI (name + proximity so same-name
+      // places at different locations don't all light up).
+      if (state.selectedPlace?.text === e.text &&
+          Math.abs((state.selectedPlace.lat ?? 0) - e.lat) < SAME_PLACE_THRESHOLD_DEG &&
+          Math.abs((state.selectedPlace.lng ?? 0) - e.lng) < SAME_PLACE_THRESHOLD_DEG) {
         const ring = document.createElement('div');
         ring.style.cssText = `
           position: absolute; top: 50%; left: 0; transform: translate(-14px, -50%);
@@ -483,14 +510,14 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
   useEffect(() => {
     if (!state.selectedPlace || !chapter?.paragraphs) return;
     const target = state.selectedPlace;
-    const activeMentions = (paragraph?.entities || []).some(e =>
+    const activeMentions = (Array.isArray(paragraph?.entities) ? paragraph.entities : []).some(e =>
       e.type === 'place' && e.text === target.text &&
       Math.abs((e.lat ?? 0) - (target.lat ?? 0)) < SAME_PLACE_THRESHOLD_DEG &&
       Math.abs((e.lng ?? 0) - (target.lng ?? 0)) < SAME_PLACE_THRESHOLD_DEG
     );
     if (activeMentions) return;
     const found = chapter.paragraphs.find(p =>
-      (p.entities || []).some(e =>
+      (Array.isArray(p.entities) ? p.entities : []).some(e =>
         e.type === 'place' && e.text === target.text &&
         Math.abs((e.lat ?? 0) - (target.lat ?? 0)) < SAME_PLACE_THRESHOLD_DEG &&
         Math.abs((e.lng ?? 0) - (target.lng ?? 0)) < SAME_PLACE_THRESHOLD_DEG
@@ -505,11 +532,11 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
     const map = mapInstance.current;
     if (!map || !mapReady || !chapter) return;
     const bounds = new maplibregl.LngLatBounds();
-    for (const p of (chapter.paragraphs || [])) {
-      for (const e of (p.entities || [])) {
+    for (const p of (Array.isArray(chapter.paragraphs) ? chapter.paragraphs : [])) {
+      for (const e of (Array.isArray(p.entities) ? p.entities : [])) {
         if (e.type === 'place' && e.lat && e.lng) bounds.extend([e.lng, e.lat]);
       }
-      for (const r of (p.routes || [])) {
+      for (const r of (Array.isArray(p.routes) ? p.routes : [])) {
         for (const pt of r.points) bounds.extend([pt.lng, pt.lat]);
       }
     }
@@ -524,10 +551,10 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
     const map = mapInstance.current;
     if (!map || !mapReady || !paragraph) return;
     const bounds = new maplibregl.LngLatBounds();
-    for (const e of (paragraph.entities || [])) {
+    for (const e of (Array.isArray(paragraph.entities) ? paragraph.entities : [])) {
       if (e.type === 'place' && e.lat && e.lng) bounds.extend([e.lng, e.lat]);
     }
-    for (const r of (paragraph.routes || [])) {
+    for (const r of (Array.isArray(paragraph.routes) ? paragraph.routes : [])) {
       for (const pt of r.points) bounds.extend([pt.lng, pt.lat]);
     }
     if (!bounds.isEmpty()) {
@@ -540,7 +567,7 @@ export default function MapPane({ paragraph, state, dispatch, chapter, period })
   const handleRecenter = useCallback(() => {
     mapInstance.current?.flyTo({ center: CENTER, zoom: DEFAULT_ZOOM, duration: 600 });
   }, []);
-  const handleReplay = useCallback(() => setReplayKey(k => k + 1), []);
+  const handleReplay = useCallback(() => replay(), [replay]);
 
   const handleExport = useCallback(async () => {
     const map = mapInstance.current;
@@ -709,6 +736,11 @@ function Cartouche({ label }) {
   );
 }
 
+function formatCoordinate(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(2) : '--';
+}
+
 function InfoCard({ place, onClose }) {
   return (
     <div className="infocard">
@@ -719,7 +751,7 @@ function InfoCard({ place, onClose }) {
       <h4 className="infocard__title">{place.text}</h4>
       <div className="infocard__modern">古地名 · {place.modernName}</div>
       <div className="infocard__role">{place.description}</div>
-      <div className="infocard__coords">{place.lat?.toFixed(2)}°N · {place.lng?.toFixed(2)}°E</div>
+      <div className="infocard__coords">{formatCoordinate(place.lat)}°N · {formatCoordinate(place.lng)}°E</div>
     </div>
   );
 }

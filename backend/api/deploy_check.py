@@ -1,5 +1,4 @@
 import json
-import sys
 
 from .deployment import deployment_is_ready, deployment_report
 

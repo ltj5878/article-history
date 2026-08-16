@@ -2,7 +2,7 @@
 // component is leaner and these can be unit-tested in isolation.
 
 export function createRouteSourceData(routes, progress = 1) {
-  if (!routes || !routes.length) return { type: 'FeatureCollection', features: [] };
+  if (!Array.isArray(routes) || !routes.length) return { type: 'FeatureCollection', features: [] };
   return {
     type: 'FeatureCollection',
     features: routes.map((r, i) => ({
@@ -17,7 +17,7 @@ export function createRouteSourceData(routes, progress = 1) {
 }
 
 export function createRoutePointsData(routes) {
-  if (!routes || !routes.length) return { type: 'FeatureCollection', features: [] };
+  if (!Array.isArray(routes) || !routes.length) return { type: 'FeatureCollection', features: [] };
   const features = [];
   routes.forEach(r => {
     r.points.forEach(p => {
@@ -32,10 +32,11 @@ export function createRoutePointsData(routes) {
 }
 
 export function createTerritoryData(states) {
-  if (!states || !states.length) return { type: 'FeatureCollection', features: [] };
+  const validStates = (Array.isArray(states) ? states : []).filter(s => Array.isArray(s.polygon) && s.polygon.length >= 3);
+  if (!validStates.length) return { type: 'FeatureCollection', features: [] };
   return {
     type: 'FeatureCollection',
-    features: states.map(s => ({
+    features: validStates.map(s => ({
       type: 'Feature',
       properties: { name: s.name, color: s.color },
       geometry: {
@@ -49,7 +50,8 @@ export function createTerritoryData(states) {
 // Truncate a polyline by cumulative arc length to render the first
 // (progress * total) of its length. progress in [0, 1].
 export function clipRouteCoords(points, progress) {
-  const coords = points.map(p => [p.lng, p.lat]);
+  const coords = (Array.isArray(points) ? points : []).map(p => [p.lng, p.lat]);
+  if (!coords.length) return [];
   if (progress >= 1 || coords.length < 2) return coords;
   if (progress <= 0) return [coords[0]];
   const segs = [];

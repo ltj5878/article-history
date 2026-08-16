@@ -9,7 +9,8 @@ export default function ReaderPane({ chapter, state, dispatch }) {
 
   useEffect(() => {
     if (state.activeParagraph === getFirstParagraphId(chapter)) return;
-    const el = containerRef.current?.querySelector(`[data-pid="${state.activeParagraph}"]`);
+    const el = Array.from(containerRef.current?.querySelectorAll('[data-pid]') || [])
+      .find(node => node.dataset.pid === state.activeParagraph);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [state.activeParagraph, chapter]);
 
@@ -80,7 +81,7 @@ export default function ReaderPane({ chapter, state, dispatch }) {
         <img className="reader__rule" src="/assets/yun-rule.svg" alt="" />
       </div>
       <div ref={containerRef} className="reader__body">
-        {chapter.sections
+        {Array.isArray(chapter.sections)
           ? chapter.sections.map(section => (
               <ArticleSection
                 key={section.id}
@@ -91,7 +92,7 @@ export default function ReaderPane({ chapter, state, dispatch }) {
                 onEntityClick={onEntityClick}
               />
             ))
-          : chapter.paragraphs.map((p, i) => (
+          : (chapter.paragraphs || []).map((p, i) => (
               <Paragraph key={p.id} idx={i} para={p} chapter={chapter} state={state} dispatch={dispatch} onEntityClick={onEntityClick} />
             ))}
         <div className="reader__endseal">
@@ -118,8 +119,9 @@ function formatSubtitle(chapter) {
 
 function getFirstParagraphId(chapter) {
   if (!chapter) return null;
-  if (chapter.paragraphs?.[0]) return chapter.paragraphs[0].id;
-  return chapter.sections?.find(section => section.paragraphs?.[0])?.paragraphs?.[0]?.id || null;
+  if (Array.isArray(chapter.paragraphs) && chapter.paragraphs[0]) return chapter.paragraphs[0].id;
+  const sections = Array.isArray(chapter.sections) ? chapter.sections : [];
+  return sections.find(section => Array.isArray(section?.paragraphs) && section.paragraphs[0])?.paragraphs?.[0]?.id || null;
 }
 
 function formatYear(y) {
@@ -127,8 +129,9 @@ function formatYear(y) {
 }
 
 function ArticleSection({ section, chapter, state, dispatch, onEntityClick }) {
-  const firstParagraph = section.paragraphs?.[0];
-  const isActive = Boolean(firstParagraph && section.paragraphs?.some(p => p.id === state.activeParagraph));
+  const paragraphs = Array.isArray(section?.paragraphs) ? section.paragraphs : [];
+  const firstParagraph = paragraphs[0];
+  const isActive = Boolean(firstParagraph && paragraphs.some(p => p.id === state.activeParagraph));
 
   return (
     <section className="reader-section">
@@ -145,7 +148,7 @@ function ArticleSection({ section, chapter, state, dispatch, onEntityClick }) {
         </span>
       </button>
       <div className="reader-section__body">
-        {(section.paragraphs || []).map((p, i) => (
+        {paragraphs.map((p, i) => (
           <Paragraph key={p.id} idx={i} para={p} chapter={chapter} state={state} dispatch={dispatch} onEntityClick={onEntityClick} />
         ))}
       </div>
@@ -165,8 +168,14 @@ function Paragraph({ idx, para, state, dispatch, onEntityClick, chapter }) {
   const [speaking, setSpeaking] = useState(false);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setBookmarked(isBookmarked(state.bookId, chapter?.id, para.id));
+    const refresh = () => setBookmarked(isBookmarked(state.bookId, chapter?.id, para.id));
+    refresh();
+    window.addEventListener('jingshi:bookmarks-changed', refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener('jingshi:bookmarks-changed', refresh);
+      window.removeEventListener('storage', refresh);
+    };
   }, [state.bookId, chapter?.id, para.id]);
 
   const toggleBookmark = (e) => {
@@ -213,8 +222,19 @@ function Paragraph({ idx, para, state, dispatch, onEntityClick, chapter }) {
   const ttsSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
 
   return (
-    <div className={"para" + (isActive ? " is-active" : "")} data-pid={para.id} onClick={onClick}>
-      <div className="para__num">{(idx + 1).toString().padStart(2, "0")}</div>
+    <article className={"para" + (isActive ? " is-active" : "")} data-pid={para.id} onClick={onClick}>
+      <button
+        type="button"
+        className="para__num"
+        aria-label={`选择第 ${idx + 1} 段并联动地图`}
+        aria-pressed={isActive}
+        onClick={event => {
+          event.stopPropagation();
+          onClick();
+        }}
+      >
+        {(idx + 1).toString().padStart(2, "0")}
+      </button>
       <div className="para__tools" onClick={(e) => e.stopPropagation()}>
         <button
           type="button"
@@ -251,23 +271,24 @@ function Paragraph({ idx, para, state, dispatch, onEntityClick, chapter }) {
       {showTranslation && para.translation && (
         <p className="para__translation">{para.translation}</p>
       )}
-    </div>
+    </article>
   );
 }
 
 function ParagraphOriginal({ text, entities, onEntityClick }) {
-  const matches = useMemo(() => computeEntityMatches(text, entities), [text, entities]);
+  const matches = useMemo(() => computeEntityMatches(String(text ?? ''), entities), [text, entities]);
   if (!matches.length) return text;
   const out = [];
   let cursor = 0;
   matches.forEach((m, i) => {
     if (cursor < m.start) out.push(text.slice(cursor, m.start));
     out.push(
-      <span key={i} className={`ent ent-${m.ent.type}`}
+      <button type="button" key={i} className={`ent ent-${m.ent.type}`}
         title={m.ent.description}
+        aria-label={`${text.slice(m.start, m.end)}${m.ent.description ? `：${m.ent.description}` : ''}`}
         onClick={(ev) => onEntityClick(m.ent, ev)}>
         {text.slice(m.start, m.end)}
-      </span>
+      </button>
     );
     cursor = m.end;
   });
@@ -276,17 +297,21 @@ function ParagraphOriginal({ text, entities, onEntityClick }) {
 }
 
 function computeEntityMatches(text, entities) {
-  if (!entities || !entities.length) return [];
-  const sorted = [...entities].sort((a, b) => b.text.length - a.text.length);
+  if (!text || !Array.isArray(entities) || !entities.length) return [];
+  const sorted = entities
+    .filter(e => e && e.text !== null && e.text !== undefined && String(e.text).length > 0)
+    .map(e => ({ ...e, text: String(e.text) }))
+    .sort((a, b) => b.text.length - a.text.length);
   const matches = [];
   for (const e of sorted) {
+    const needle = e.text;
     let from = 0;
     while (from < text.length) {
-      const idx = text.indexOf(e.text, from);
+      const idx = text.indexOf(needle, from);
       if (idx === -1) break;
-      const overlaps = matches.some(m => idx < m.end && idx + e.text.length > m.start);
-      if (!overlaps) matches.push({ start: idx, end: idx + e.text.length, ent: e });
-      from = idx + e.text.length;
+      const overlaps = matches.some(m => idx < m.end && idx + needle.length > m.start);
+      if (!overlaps) matches.push({ start: idx, end: idx + needle.length, ent: e });
+      from = idx + needle.length;
     }
   }
   matches.sort((a, b) => a.start - b.start);

@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { loadBookmarks, removeBookmark } from '../utils/storage';
 
 export default function BookmarksMenu({ dispatch }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState(() => loadBookmarks());
   const ref = useRef(null);
+  const menuId = useId();
 
   useEffect(() => {
     const refresh = () => setItems(loadBookmarks());
@@ -22,7 +23,14 @@ export default function BookmarksMenu({ dispatch }) {
     setItems(loadBookmarks());
     const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener('click', onDoc);
-    return () => document.removeEventListener('click', onDoc);
+    const onKey = event => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('click', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [open]);
 
   const onJump = (b) => {
@@ -43,39 +51,43 @@ export default function BookmarksMenu({ dispatch }) {
         type="button"
         className="iconbtn"
         title={`书签 (${items.length})`}
-        onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
+        aria-label={`书签，共 ${items.length} 条`}
+        aria-expanded={open}
+        aria-controls={menuId}
+        onClick={() => setOpen(o => !o)}
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
           <path d="M3.5 2.5h9v11l-4.5-3-4.5 3v-11z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" fill={items.length ? 'currentColor' : 'none'} fillOpacity={items.length ? 0.15 : 0}/>
         </svg>
       </button>
       {open && (
-        <div className="picker__menu" style={{ minWidth: 280, maxWidth: 360, maxHeight: 420, overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+        <div id={menuId} className="picker__menu" style={{ minWidth: 280, maxWidth: 360, maxHeight: 420, overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
           {items.length === 0 ? (
             <div style={{ padding: '12px 14px', fontSize: 13, color: 'var(--fg-3)' }}>暂无书签。在段落上点击 ☆ 收藏。</div>
           ) : (
             items.map(b => (
-              <button
-                type="button"
-                key={b.id}
-                className="picker__item"
-                onClick={() => onJump(b)}
-                style={{ display: 'flex', flexDirection: 'column', gap: 2, position: 'relative', paddingRight: 28 }}
-              >
-                <span className="picker__item-label" style={{ fontSize: 12, color: 'var(--fg-3)' }}>
-                  《{b.bookTitle}》· {b.chapterTitle}
-                </span>
-                <span className="picker__item-sub" style={{ fontSize: 13, color: 'var(--fg)', lineHeight: 1.4 }}>
-                  {b.snippet || '(无摘要)'}
-                </span>
-                <span
-                  role="button"
-                  tabIndex={0}
+              <div key={b.id} className="bookmark-item">
+                <button
+                  type="button"
+                  className="picker__item"
+                  onClick={() => onJump(b)}
+                  style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingRight: 32 }}
+                >
+                  <span className="picker__item-label" style={{ fontSize: 12, color: 'var(--fg-3)' }}>
+                    《{b.bookTitle}》· {b.chapterTitle}
+                  </span>
+                  <span className="picker__item-sub" style={{ fontSize: 13, color: 'var(--fg)', lineHeight: 1.4 }}>
+                    {b.snippet || '(无摘要)'}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="bookmark-item__delete"
                   onClick={(e) => onDelete(e, b)}
-                  style={{ position: 'absolute', right: 8, top: 8, fontSize: 14, color: 'var(--fg-4)', cursor: 'pointer', padding: 2 }}
                   title="删除书签"
-                >×</span>
-              </button>
+                  aria-label={`删除《${b.bookTitle}》${b.chapterTitle}的书签`}
+                >×</button>
+              </div>
             ))
           )}
         </div>

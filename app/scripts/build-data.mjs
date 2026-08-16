@@ -93,10 +93,11 @@ export function buildStaticBookData(books) {
       for (const article of mod.articles) {
         articleDocs.set(`${mod.book.id}/${article.id}`, article);
       }
-    } else {
-      meta.chapters = (mod.chapters || []).map(summarizeChapter);
-      meta.chapterCount = mod.chapters?.length || 0;
-      for (const chapter of (mod.chapters || [])) {
+    }
+    if (mod.chapters?.length) {
+      meta.chapters = mod.chapters.map(summarizeChapter);
+      meta.chapterCount = mod.chapters.length;
+      for (const chapter of mod.chapters) {
         chapterDocs.set(`${mod.book.id}/${chapter.id}`, chapter);
       }
     }

@@ -2,8 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 
 // Drives the play/pause/scrub state for route animation along the active
 // paragraph's routes. Returns progress (0..1) which the caller plugs into
-// route source data; resets to 1 (fully drawn) whenever paragraph changes or
-// `replayKey` increments.
+// route source data; resets to 1 (fully drawn) whenever paragraph changes.
 export function useRouteAnimation({ paragraphId, replayKey, durationMs = 4000 }) {
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(1);
@@ -54,6 +53,11 @@ export function useRouteAnimation({ paragraphId, replayKey, durationMs = 4000 })
     setPlaying(false);
     setProgress(Number(value));
   }, []);
+  const replay = useCallback(() => {
+    progressRef.current = 0;
+    setProgress(0);
+    setPlaying(true);
+  }, []);
 
-  return { progress, playing, togglePlay, scrub };
+  return { progress, playing, togglePlay, scrub, replay };
 }

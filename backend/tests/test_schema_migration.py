@@ -93,3 +93,10 @@ def test_legacy_sqlite_reading_units_table_is_migrated(tmp_path):
 def test_render_postgres_url_uses_psycopg_driver():
     assert get_database_url("postgres://user:pass@host:5432/db") == "postgresql+psycopg://user:pass@host:5432/db"
     assert get_database_url("postgresql://user:pass@host:5432/db") == "postgresql+psycopg://user:pass@host:5432/db"
+
+
+def test_default_sqlite_url_is_absolute_and_cwd_independent():
+    url = get_database_url()
+
+    assert url.startswith("sqlite:///")
+    assert "/backend/.data/content.db" in url

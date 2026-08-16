@@ -178,7 +178,7 @@ class AdminContentRepository:
         unit = self._get_reading_unit(book_id, kind, unit_id)
         unit.title = str(document.get("title") or unit.title)
         unit.subtitle = document.get("subtitle")
-        unit.year = document.get("year") if kind == "chapter" else document.get("year")
+        unit.year = document.get("year")
         unit.year_start = document.get("yearStart")
         unit.year_end = document.get("yearEnd")
         unit.document_json = encode_json(document)
